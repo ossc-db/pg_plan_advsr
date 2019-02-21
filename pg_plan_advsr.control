@@ -1,0 +1,4 @@
+comment = 'auto plan tuning'
+module_pathname = '$libdir/pg_plan_advsr'
+relocatable = true
+default_version = '0.0'
