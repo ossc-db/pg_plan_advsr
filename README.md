@@ -56,7 +56,7 @@ Second, execute the following queries, and you can get a plan and an execution t
 	        where  a in (select a from x)
 	     ) tmp,
 	       t2 
-	where tmp.ai = t2.a;
+	where tmp.a = t2.a;
 
 Third, enable feedback loop by the following command.
 
@@ -91,7 +91,7 @@ Before tuning
 	(16 rows)
 	
 
-After tuning: the top join method changed from Hash Join to Nested loop.
+After tuning: the topmost join method is changed from Hash Join to Nested loop. The execution time changed 329 ms -> 34 ms.
 
 	
 	                                                        QUERY PLAN
@@ -113,7 +113,7 @@ After tuning: the top join method changed from Hash Join to Nested loop.
 	(14 rows)
 	
 
-Fifth, you can see plan changes and execution time changes to check plan_repo.plan_history_table, if you want. See: [Usage](#4-usage)
+Finally, you can see plan changes and execution time changes to check plan_repo.plan_history_table, if you want. See: [Usage](#4-usage)
 
 
 
@@ -124,7 +124,7 @@ Functions
 ---------
 - FUNCTION pg_plan_advsr_enable_feedback() RETURNS void
 - FUNCTION pg_plan_advsr_disable_feedback() RETURNS void
-- FUNCTION pg_plan_advsr_clear() RETURNS void
+- FUNCTION plan_repo.get_hint(bigint) RETURNS text
 
 Tables
 ------
@@ -216,7 +216,7 @@ There are two types of usage.
 
 	select pg_plan_advsr_disable_feedback();
 	Execute EXPLAIN ANALYZE command (which is your query). 
-	You can get hints by using the below query:
+	You can get hints by using the below queries:
 
 	    select pgsp_queryid, pgsp_planid, execution_time, scan_hint, join_hint, lead_hint from plan_repo.plan_history order by id;
 
@@ -229,6 +229,21 @@ There are two types of usage.
 	       4173287301 |  1101439786 |          2.149 | SEQSCAN(x) INDEXSCAN(t1) INDEXSCAN(t2)  | NESTLOOP(t2 t1 x) +| LEADING( ((x t1 )t2 ) )
 	                  |             |                |                                         | NESTLOOP(t1 x)     |
 
+	    # \a
+	    Output format is unaligned.
+	    # \t
+	    Tuples only is on.
+	    
+	    select plan_repo.get_hint(1101439786);
+	    
+	    /*+
+	    LEADING( ((x t1 )t2 ) )
+	    NESTLOOP(t2 t1 x)
+	    NESTLOOP(t1 x)
+	    SEQSCAN(x) INDEXSCAN(t1) INDEXSCAN(t2)
+	    */
+	    --1101439786
+	    
 
 5 Installation Requirements
 ===========================
