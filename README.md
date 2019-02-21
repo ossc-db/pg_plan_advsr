@@ -67,7 +67,9 @@ Because pg_plan_advsr fixed an estimated row error, therefore planner chose more
 
 e.g.
 
-	* Before tuning
+Before tuning
+
+	
 	                                                          QUERY PLAN
 	-------------------------------------------------------------------------------------------------------------------------------
 	 Hash Join  (cost=9569.92..43000.92 rows=500000 width=16) (actual time=3.308..301.279 rows=201 loops=1)
@@ -87,9 +89,11 @@ e.g.
 	 Planning time: 0.540 ms
 	 Execution time: 329.571 ms
 	(16 rows)
+	
 
-* After tuning: the top join method changed from Hash Join to Nested loop.
+After tuning: the top join method changed from Hash Join to Nested loop.
 
+	
 	                                                        QUERY PLAN
 	---------------------------------------------------------------------------------------------------------------------------
 	 Nested Loop  (cost=8.27..971.76 rows=201 width=16) (actual time=0.265..2.148 rows=201 loops=1)
@@ -107,6 +111,7 @@ e.g.
 	 Planning time: 1.068 ms
 	 Execution time: 34.459 ms
 	(14 rows)
+	
 
 Fifth, you can see plan changes and execution time changes to check plan_repo.plan_history_table, if you want. See: [Usage](#4-usage)
 
@@ -128,6 +133,7 @@ Tables
 - plan_repo.raw_queries
 
 Table "plan_repo.plan_history"
+
 	      Column      |            Type             | Collation | Nullable |                      Default
 	------------------+-----------------------------+-----------+----------+----------------------------------------------------
 	 id               | integer                     |           | not null | nextval('plan_repo.plan_history_id_seq'::regclass)
@@ -145,12 +151,14 @@ Table "plan_repo.plan_history"
 	 timestamp        | timestamp without time zone |           |          |
 
 Table "plan_repo.norm_queries"
+
 	      Column       | Type | Collation | Nullable | Default
 	-------------------+------+-----------+----------+---------
 	 norm_query_hash   | text |           |          |
 	 norm_query_string | text |           |          |
 
 Table "plan_repo.raw_queries"
+
 	      Column      |            Type             | Collation | Nullable |                           Default
 	------------------+-----------------------------+-----------+----------+-------------------------------------------------------------
 	 norm_query_hash  | text                        |           |          |
@@ -163,29 +171,29 @@ Table "plan_repo.raw_queries"
 3 Options
 =========
 
-- ** pg_plan_advsr.enabled **
+- pg_plan_advsr.enabled
 
-    "ON": Enable pg_plan_advsr. 
-    It allows creating various hints for fixing estimation row errors and also for reproducing a plan.
-    It stores them to the plan_history table. If you want to use "auto plan tuning using feedback loop", you have to execute below function pg_plan_advsr_enable_feedback().
-    Default setting is "ON". 
+	"ON": Enable pg_plan_advsr. 
+	It allows creating various hints for fixing estimation row errors and also for reproducing a plan.
+	It stores them to the plan_history table. If you want to use "auto plan tuning using feedback loop", you have to execute below function pg_plan_advsr_enable_feedback().
+	Default setting is "ON". 
 
-- ** pg_plan_advsr_enable_feedback() **
+- pg_plan_advsr_enable_feedback()
 
-    This function allows you to use feedback loop for plan tuning.
-    Actually, it is a wrapper for these commands:
+	This function allows you to use feedback loop for plan tuning.
+	Actually, it is a wrapper for these commands:
 
-        set pg_plan_advsr.enabled to on;
-        set pg_hint_plan.enable_hint_table to on;
-        set pg_hint_plan.debug_print to on;
-    
-- ** pg_plan_advsr_disable_feedback() **
+	    set pg_plan_advsr.enabled to on;
+	    set pg_hint_plan.enable_hint_table to on;
+	    set pg_hint_plan.debug_print to on;
+	
+- pg_plan_advsr_disable_feedback()
 
-    This function disables using feedback loop for plan tuning. It is a wrapper for these commands:
+	This function disables using feedback loop for plan tuning. It is a wrapper for these commands:
 
-        set pg_plan_advsr.enabled to on;
-        set pg_hint_plan.enable_hint_table to off;
-        set pg_hint_plan.debug_print to off;
+	    set pg_plan_advsr.enabled to on;
+	    set pg_hint_plan.enable_hint_table to off;
+	    set pg_hint_plan.debug_print to off;
 
 
 4 Usage
@@ -197,23 +205,23 @@ There are two types of usage.
 
 - For auto plan tuning
 
-    select pg_plan_advsr_enable_feedback();
-    Execute EXPLAIN ANALYZE command (which is your query) repeateadly until row estimation errors had vanished.
+	select pg_plan_advsr_enable_feedback();
+	Execute EXPLAIN ANALYZE command (which is your query) repeateadly until row estimation errors had vanished.
 
-    See shell script file as an example: XXXXX.sh
+	See shell script file as an example: XXXXX.sh
 
-    Note: 
+	Note: 
 
 - For only getting hints to reproduce a plan on other databases
 
-    select pg_plan_advsr_disable_feedback();
-    Execute EXPLAIN ANALYZE command (which is your query). 
-    You can get hints by using the below query:
+	select pg_plan_advsr_disable_feedback();
+	Execute EXPLAIN ANALYZE command (which is your query). 
+	You can get hints by using the below query:
 
-        select pgsp_queryid, pgsp_planid, execution_time, scan_hint, join_hint, lead_hint from plan_repo.plan_history order by id;
+	    select pgsp_queryid, pgsp_planid, execution_time, scan_hint, join_hint, lead_hint from plan_repo.plan_history order by id;
 
-    e.g.
-
+	e.g.
+	
 	 pgsp_queryid | pgsp_planid | execution_time |                scan_hint                |     join_hint      |        lead_hint
 	--------------+-------------+----------------+-----------------------------------------+--------------------+-------------------------
 	   4173287301 |  3707748199 |        265.179 | SEQSCAN(t2) SEQSCAN(x) INDEXSCAN(t1)    | HASHJOIN(t2 t1 x) +| LEADING( (t2 (x t1 )) )
@@ -238,45 +246,45 @@ pg_plan_advsr uses pg_hint_plan and pg_store_plans cooperatively.
 
 TBA
 
-$ cd contrib
-$ wget https://github.com/ossc-db/pg_hint_plan/archive/REL10_1_3_2.tar.gz
-$ wget https://github.com/ossc-db/pg_store_plans/archive/1.3.tar.gz
-$ git clone https://github.com/ossc-db/pg_plan_advsr.git pg_plan_advsr
-
-$ tar xvzf REL10_1_3_2.tar.gz
-$ tar xvzf 1.3.tar.gz
-
-$ cp pg_hint_plan-REL10_1_3_2/pg_stat_statements.c pg_plan_advsr/
-$ cp pg_store_plans-1.3/pgsp_json*.[ch] pg_plan_advsr/
-
-$ cd pg_hint_plan-REL10_1_3_2
-$ make && make install
-
-$ cd ../pg_store_plans-1.3
-$ make && make install
-
-$ cd ../pg_plan_advsr
-$ make && make install 
-
-$ vi $PGDATA/postgresql.conf
-
+	$ cd contrib
+	$ wget https://github.com/ossc-db/pg_hint_plan/archive/REL10_1_3_2.tar.gz
+	$ wget https://github.com/ossc-db/pg_store_plans/archive/1.3.tar.gz
+	$ git clone https://github.com/ossc-db/pg_plan_advsr.git pg_plan_advsr
+	
+	$ tar xvzf REL10_1_3_2.tar.gz
+	$ tar xvzf 1.3.tar.gz
+	
+	$ cp pg_hint_plan-REL10_1_3_2/pg_stat_statements.c pg_plan_advsr/
+	$ cp pg_store_plans-1.3/pgsp_json*.[ch] pg_plan_advsr/
+	
+	$ cd pg_hint_plan-REL10_1_3_2
+	$ make && make install
+	
+	$ cd ../pg_store_plans-1.3
+	$ make && make install
+	
+	$ cd ../pg_plan_advsr
+	$ make && make install 
+	
+	$ vi $PGDATA/postgresql.conf
+	
 	---- Add this line ----
 	shared_preload_libraries = 'pg_hint_plan, pg_plan_advsr, pg_store_plans'
 	max_parallel_workers_per_gather = 0
 	max_parallel_workers = 0
 	----------------------
-
+	
 	---- Consider increase these numbers (optional) ----
 	geqo_threshold = 12 -> XX
 	from_collapse_limit = 8 -> YY
 	join_collapse_limit = 8 -> ZZ
 	----------------------------------------------------
-
-$ pg_ctl start
-$ psql 
-# create extension pg_hint_plan;
-# create extension pg_store_plans;
-# create extension pg_plan_advsr;
+	
+	$ pg_ctl start
+	$ psql 
+	# create extension pg_hint_plan;
+	# create extension pg_store_plans;
+	# create extension pg_plan_advsr;
 
 
 7 Internals
@@ -327,13 +335,13 @@ https://github.com/ossc-db/pg_store_plans/blob/master/doc/index.html
 If you want to report a problem with pg_plan_advsr, please include the following information because we will analyze it by reproducing your problem:
 
  - Versions
-    - PostgreSQL
-    - pg_hint_plan
-    - pg_store_plans
+	- PostgreSQL
+	- pg_hint_plan
+	- pg_store_plans
  - Query
  - DDL
-    - CREATE TABLE
-    - CREATE INDEX
+	- CREATE TABLE
+	- CREATE INDEX
  - Data (If possible)
 
 If you have a problem or question or any kind of feedback, the preferred option is to open an issue on GitHub:  
