@@ -222,12 +222,12 @@ There are two types of usage.
 
 	e.g.
 	
-	 pgsp_queryid | pgsp_planid | execution_time |                scan_hint                |     join_hint      |        lead_hint
-	--------------+-------------+----------------+-----------------------------------------+--------------------+-------------------------
-	   4173287301 |  3707748199 |        265.179 | SEQSCAN(t2) SEQSCAN(x) INDEXSCAN(t1)    | HASHJOIN(t2 t1 x) +| LEADING( (t2 (x t1 )) )
-	              |             |                |                                         | NESTLOOP(t1 x)     |
-	   4173287301 |  1101439786 |          2.149 | SEQSCAN(x) INDEXSCAN(t1) INDEXSCAN(t2)  | NESTLOOP(t2 t1 x) +| LEADING( ((x t1 )t2 ) )
-	              |             |                |                                         | NESTLOOP(t1 x)     |
+	     pgsp_queryid | pgsp_planid | execution_time |                scan_hint                |     join_hint      |        lead_hint
+	    --------------+-------------+----------------+-----------------------------------------+--------------------+-------------------------
+	       4173287301 |  3707748199 |        265.179 | SEQSCAN(t2) SEQSCAN(x) INDEXSCAN(t1)    | HASHJOIN(t2 t1 x) +| LEADING( (t2 (x t1 )) )
+	                  |             |                |                                         | NESTLOOP(t1 x)     |
+	       4173287301 |  1101439786 |          2.149 | SEQSCAN(x) INDEXSCAN(t1) INDEXSCAN(t2)  | NESTLOOP(t2 t1 x) +| LEADING( ((x t1 )t2 ) )
+	                  |             |                |                                         | NESTLOOP(t1 x)     |
 
 
 5 Installation Requirements
@@ -353,4 +353,5 @@ This requires a GitHub account.
 =========
 
 Tatsuro Yamada (@yamatattsu)
+
 Copyright (c) 2019, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
