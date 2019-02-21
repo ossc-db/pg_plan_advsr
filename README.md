@@ -1,1 +1,348 @@
-# pg_plan_advsr
+pg_plan_advsr
+=============
+
+pg_plan_advsr is a PostgreSQL extension that provides Automated execution plan tuning using feedback loop.
+This extension might help you if you have an analytic query which has many joins, and you'd like to get an efficient plan to reduce execution time.
+
+* Note: For now, This extension is in POC phase. Not production ready. *
+
+This README contains the following sections:
+
+1. [Cookbook](#1-cookbook)
+2. [Objects created by the extension](#2-objects-created-by-the-extension)
+3. [Options](#3-options)
+4. [Usage](#4-usage)
+5. [Installation Requirements](#5-installation-requirements)
+6. [Installation](#6-installation)
+7. [Internals](#7-internals)
+8. [Limitations](#8-limitations)
+9. [Support](#9-support)
+10. [Author](#10-author)
+
+pg_plan_advsr was created by Tatsuro Yamada.
+
+
+1 Cookbook
+==========
+
+This is a simple example of how to use pg_plan_advsr.
+More detailed information will be provided in the sections
+[Options](#3-options) and [Usage](#4-usage).
+There are Five steps in the example.
+
+First, create two tables:
+
+	create table t1 (a int, b int);
+	insert into t1 (select a, random() * 1000 from generate_series(0, 999999) a);
+	create index i_t1_a on t1 (a);
+	analyze t1;
+
+	create table t2 (a int, b int);
+	insert into t2 (select a, random() * 1000 from generate_series(0, 999999) a);
+	create index i_t2_a on t2 (a);
+	analyze t2;
+
+Second, execute the following queries, and you can get a plan and an execution time.
+
+	explain analyze 
+	with x as (
+	    select * 
+	    from   t1 
+	    limit 201
+	) 
+	select * 
+	from (  select *
+	        from   t1 
+	        where  a in (select a from x)
+	     ) tmp,
+	       t2 
+	where tmp.ai = t2.a;
+
+Third, enable feedback loop by the following command.
+
+	select pg_plan_advsr_enable_feedback();
+
+Fourth, execute the previous query (explain analyze ...) twice, and you can see the plan was changed and the execution time was shortened.  
+Because pg_plan_advsr fixed an estimated row error, therefore planner chose more efficient plan than before.
+
+e.g.
+
+	* Before tuning
+	                                                          QUERY PLAN
+	-------------------------------------------------------------------------------------------------------------------------------
+	 Hash Join  (cost=9569.92..43000.92 rows=500000 width=16) (actual time=3.308..301.279 rows=201 loops=1)
+	   Hash Cond: (t2.a = t1.a)
+	   CTE x
+	     ->  Limit  (cost=0.00..2.90 rows=201 width=8) (actual time=0.011..0.077 rows=201 loops=1)
+	           ->  Seq Scan on t1 t1_1  (cost=0.00..14425.00 rows=1000000 width=8) (actual time=0.010..0.036 rows=201 loops=1)
+	   ->  Seq Scan on t2  (cost=0.00..14425.00 rows=1000000 width=8) (actual time=0.024..98.820 rows=1000000 loops=1)
+	   ->  Hash  (cost=875.02..875.02 rows=500000 width=12) (actual time=1.364..1.364 rows=201 loops=1)
+	         Buckets: 524288  Batches: 2  Memory Usage: 4101kB
+	         ->  Nested Loop  (cost=4.95..875.02 rows=500000 width=12) (actual time=0.245..1.186 rows=201 loops=1)
+	               ->  HashAggregate  (cost=4.52..6.52 rows=200 width=4) (actual time=0.231..0.296 rows=201 loops=1)
+	                     Group Key: x.a
+	                     ->  CTE Scan on x  (cost=0.00..4.02 rows=201 width=4) (actual time=0.013..0.148 rows=201 loops=1)
+	               ->  Index Scan using i_t1_a on t1  (cost=0.42..4.33 rows=1 width=8) (actual time=0.003..0.004 rows=1 loops=201)
+	                     Index Cond: (a = x.a)
+	 Planning time: 0.540 ms
+	 Execution time: 329.571 ms
+	(16 rows)
+
+* After tuning: the top join method changed from Hash Join to Nested loop.
+
+	                                                        QUERY PLAN
+	---------------------------------------------------------------------------------------------------------------------------
+	 Nested Loop  (cost=8.27..971.76 rows=201 width=16) (actual time=0.265..2.148 rows=201 loops=1)
+	   CTE x
+	     ->  Limit  (cost=0.00..2.90 rows=201 width=8) (actual time=0.016..0.077 rows=201 loops=1)
+	           ->  Seq Scan on t1 t1_1  (cost=0.00..14425.00 rows=1000000 width=8) (actual time=0.015..0.042 rows=201 loops=1)
+	   ->  Nested Loop  (cost=4.95..875.02 rows=201 width=12) (actual time=0.256..1.251 rows=201 loops=1)
+	         ->  HashAggregate  (cost=4.52..6.52 rows=200 width=4) (actual time=0.241..0.314 rows=201 loops=1)
+	               Group Key: x.a
+	               ->  CTE Scan on x  (cost=0.00..4.02 rows=201 width=4) (actual time=0.019..0.153 rows=201 loops=1)
+	         ->  Index Scan using i_t1_a on t1  (cost=0.42..4.33 rows=1 width=8) (actual time=0.003..0.004 rows=1 loops=201)
+	               Index Cond: (a = x.a)
+	   ->  Index Scan using i_t2_a on t2  (cost=0.42..0.46 rows=1 width=8) (actual time=0.003..0.003 rows=1 loops=201)
+	         Index Cond: (a = t1.a)
+	 Planning time: 1.068 ms
+	 Execution time: 34.459 ms
+	(14 rows)
+
+Fifth, you can see plan changes and execution time changes to check plan_repo.plan_history_table, if you want. See: [Usage](#4-usage)
+
+
+
+2 Objects created by the extension
+==================================
+
+Functions
+---------
+- FUNCTION pg_plan_advsr_enable_feedback() RETURNS void
+- FUNCTION pg_plan_advsr_disable_feedback() RETURNS void
+- FUNCTION pg_plan_advsr_clear() RETURNS void
+
+Tables
+------
+- plan_repo.plan_history
+- plan_repo.norm_queries
+- plan_repo.raw_queries
+
+Table "plan_repo.plan_history"
+	      Column      |            Type             | Collation | Nullable |                      Default
+	------------------+-----------------------------+-----------+----------+----------------------------------------------------
+	 id               | integer                     |           | not null | nextval('plan_repo.plan_history_id_seq'::regclass)
+	 norm_query_hash  | text                        |           |          |
+	 pgsp_queryid     | bigint                      |           |          |
+	 pgsp_planid      | bigint                      |           |          |
+	 execution_time   | numeric                     |           |          |
+	 rows_hint        | text                        |           |          |
+	 scan_hint        | text                        |           |          |
+	 join_hint        | text                        |           |          |
+	 lead_hint        | text                        |           |          |
+	 diff_of_joins    | numeric                     |           |          |
+	 join_cnt         | integer                     |           |          |
+	 application_name | text                        |           |          |
+	 timestamp        | timestamp without time zone |           |          |
+
+Table "plan_repo.norm_queries"
+	      Column       | Type | Collation | Nullable | Default
+	-------------------+------+-----------+----------+---------
+	 norm_query_hash   | text |           |          |
+	 norm_query_string | text |           |          |
+
+Table "plan_repo.raw_queries"
+	      Column      |            Type             | Collation | Nullable |                           Default
+	------------------+-----------------------------+-----------+----------+-------------------------------------------------------------
+	 norm_query_hash  | text                        |           |          |
+	 raw_query_id     | integer                     |           | not null | nextval('plan_repo.raw_queries_raw_query_id_seq'::regclass)
+	 raw_query_string | text                        |           |          |
+	 timestamp        | timestamp without time zone |           |          |
+
+
+
+3 Options
+=========
+
+- ** pg_plan_advsr.enabled **
+
+    "ON": Enable pg_plan_advsr. 
+    It allows creating various hints for fixing estimation row errors and also for reproducing a plan.
+    It stores them to the plan_history table. If you want to use "auto plan tuning using feedback loop", you have to execute below function pg_plan_advsr_enable_feedback().
+    Default setting is "ON". 
+
+- ** pg_plan_advsr_enable_feedback() **
+
+    This function allows you to use feedback loop for plan tuning.
+    Actually, it is a wrapper for these commands:
+
+        set pg_plan_advsr.enabled to on;
+        set pg_hint_plan.enable_hint_table to on;
+        set pg_hint_plan.debug_print to on;
+    
+- ** pg_plan_advsr_disable_feedback() **
+
+    This function disables using feedback loop for plan tuning. It is a wrapper for these commands:
+
+        set pg_plan_advsr.enabled to on;
+        set pg_hint_plan.enable_hint_table to off;
+        set pg_hint_plan.debug_print to off;
+
+
+4 Usage
+=======
+
+TBA
+
+There are two types of usage.
+
+- For auto plan tuning
+
+    select pg_plan_advsr_enable_feedback();
+    Execute EXPLAIN ANALYZE command (which is your query) repeateadly until row estimation errors had vanished.
+
+    See shell script file as an example: XXXXX.sh
+
+    Note: 
+
+- For only getting hints to reproduce a plan on other databases
+
+    select pg_plan_advsr_disable_feedback();
+    Execute EXPLAIN ANALYZE command (which is your query). 
+    You can get hints by using the below query:
+
+        select pgsp_queryid, pgsp_planid, execution_time, scan_hint, join_hint, lead_hint from plan_repo.plan_history order by id;
+
+    e.g.
+
+	 pgsp_queryid | pgsp_planid | execution_time |                scan_hint                |     join_hint      |        lead_hint
+	--------------+-------------+----------------+-----------------------------------------+--------------------+-------------------------
+	   4173287301 |  3707748199 |        265.179 | SEQSCAN(t2) SEQSCAN(x) INDEXSCAN(t1)    | HASHJOIN(t2 t1 x) +| LEADING( (t2 (x t1 )) )
+	              |             |                |                                         | NESTLOOP(t1 x)     |
+	   4173287301 |  1101439786 |          2.149 | SEQSCAN(x) INDEXSCAN(t1) INDEXSCAN(t2)  | NESTLOOP(t2 t1 x) +| LEADING( ((x t1 )t2 ) )
+	              |             |                |                                         | NESTLOOP(t1 x)     |
+
+
+5 Installation Requirements
+===========================
+
+pg_plan_advsr uses pg_hint_plan and pg_store_plans cooperatively.
+
+- PostgreSQL => 10.4 (However, not supported PG11 yet.) 
+- pg_hint_plan => 1.3.2
+- pg_store_plans => 1.3
+
+
+
+6 Installation
+==============
+
+TBA
+
+$ cd contrib
+$ wget https://github.com/ossc-db/pg_hint_plan/archive/REL10_1_3_2.tar.gz
+$ wget https://github.com/ossc-db/pg_store_plans/archive/1.3.tar.gz
+$ git clone https://github.com/ossc-db/pg_plan_advsr.git pg_plan_advsr
+
+$ tar xvzf REL10_1_3_2.tar.gz
+$ tar xvzf 1.3.tar.gz
+
+$ cp pg_hint_plan-REL10_1_3_2/pg_stat_statements.c pg_plan_advsr/
+$ cp pg_store_plans-1.3/pgsp_json*.[ch] pg_plan_advsr/
+
+$ cd pg_hint_plan-REL10_1_3_2
+$ make && make install
+
+$ cd ../pg_store_plans-1.3
+$ make && make install
+
+$ cd ../pg_plan_advsr
+$ make && make install 
+
+$ vi $PGDATA/postgresql.conf
+
+	---- Add this line ----
+	shared_preload_libraries = 'pg_hint_plan, pg_plan_advsr, pg_store_plans'
+	max_parallel_workers_per_gather = 0
+	max_parallel_workers = 0
+	----------------------
+
+	---- Consider increase these numbers (optional) ----
+	geqo_threshold = 12 -> XX
+	from_collapse_limit = 8 -> YY
+	join_collapse_limit = 8 -> ZZ
+	----------------------------------------------------
+
+$ pg_ctl start
+$ psql 
+# create extension pg_hint_plan;
+# create extension pg_store_plans;
+# create extension pg_plan_advsr;
+
+
+7 Internals
+===========
+
+TBA
+
+These presentation materials are useful to know concepts and its architecture, and these show 
+a benchmark result by using Join order benchmark:
+
+[AUTO PLAN TUNING USING FEEDBACK LOOP at PGConf.Eu 2018]
+https://www.postgresql.eu/events/pgconfeu2018/schedule/session/2132-auto-plan-tuning-using-feedback-loop/
+
+[AUTO PLAN TUNING USING FEEDBACK LOOP at PGConf.Russia 2019]
+https://pgconf.ru/en/2019/242844
+
+
+8 Limitations
+=============
+
+Not supported
+------------
+ - Handle InitPlans and SubPlans
+ - Handle Append and MergeAppend 
+ - Fix bese-relation's estimated row error (This is pg_hint_plan's limitation)
+ - Concurrent execution 
+
+Not tested
+----------
+ - Parallel query
+ - Partitioned Table
+ - JIT
+
+See: TODO file
+
+pg_plan_advsr uses pg_hint_plan and pg_store_plans, it would be better to check these document to know their limitations.
+
+[pg_hint_plan]
+https://github.com/ossc-db/pg_hint_plan/blob/master/doc/pg_hint_plan.html
+
+[pg_store_plans]
+https://github.com/ossc-db/pg_store_plans/blob/master/doc/index.html
+
+
+9 Support
+=========
+
+If you want to report a problem with pg_plan_advsr, please include the following information because we will analyze it by reproducing your problem:
+
+ - Versions
+    - PostgreSQL
+    - pg_hint_plan
+    - pg_store_plans
+ - Query
+ - DDL
+    - CREATE TABLE
+    - CREATE INDEX
+ - Data (If possible)
+
+If you have a problem or question or any kind of feedback, the preferred option is to open an issue on GitHub:  
+https://github.com/ossc-db/pg_plan_advsr/issues
+This requires a GitHub account.
+
+
+10 Author
+=========
+
+Tatsuro Yamada (@yamatattsu)
+Copyright (c) 2019, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
