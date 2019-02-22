@@ -512,7 +512,7 @@ static void pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
 	elog(DEBUG1, "isExplain: %d", isExplain);
 	if(isExplain && pg_plan_advsr_is_enabled)
 	{
-		elog(INFO, "## pg_plan_advsr_ExecutorEnd start ##");
+		elog(DEBUG1, "## pg_plan_advsr_ExecutorEnd start ##");
 
 		/* Create Hints using HintState like a ExplainState */
 		hs = pg_plan_advsr_NewExplainState();
@@ -525,7 +525,7 @@ static void pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
 
 		pg_plan_advsr_ExplainPrintPlan(hs, queryDesc);
 
-		elog(INFO, "## pg_plan_advsr_ExecutorEnd end ##");
+		elog(DEBUG1, "## pg_plan_advsr_ExecutorEnd end ##");
 
 	}
 
@@ -1075,49 +1075,24 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 	appendStringInfo(leadcxt->lead_str, " )");
 
 	/* queryId is made by pg_stat_statements */
-	elog(INFO, "---- queryid ------------------");
-	/*
-	if(queryDesc->plannedstmt->queryId != 0)
-	{
-		elog(INFO, "queryId: %u", queryDesc->plannedstmt->queryId);
-	}
-	else
-	{
-		elog(INFO, "pgsp_queryid: %u", hash_query(queryDesc->sourceText));
-	}
-	*/
 	pgsp_queryid = hash_query(queryDesc->sourceText);
-	elog(INFO, "pgsp_queryid: %u", pgsp_queryid);
+	elog(INFO, "---- pgsp_queryid ----------------\n\t\t%u", pgsp_queryid);
 
-	elog(INFO, "---- pgsp_planid ------------------");
 	pgsp_planid = create_pgsp_planid(queryDesc);
-	elog(INFO, "pgsp_planid: %u", pgsp_planid);
+	elog(INFO, "---- pgsp_planid -----------------\n\t\t%u", pgsp_planid);
 
-	elog(INFO, "---- Execution Time -----------");
 	totaltime = queryDesc->totaltime ? queryDesc->totaltime->total * 1000.0 : 0;
-	elog(INFO, "Execution Time: %0.3f ms", totaltime);
+	elog(INFO, "---- Execution Time --------------\n\t\t%0.3f ms", totaltime);
 
-	elog(DEBUG3, "---- query text ---------------");
-	elog(DEBUG3, "\n%s\n", queryDesc->sourceText);
+	elog(DEBUG3, "---- Query text -------------------\n%s\n", queryDesc->sourceText);
 
 	/* normalized_query is made by post_parse_analyze_hook function */
-	elog(DEBUG3, "---- normalized query text ----");
-	elog(DEBUG3, "\n%s\n", normalized_query);
+	elog(DEBUG3, "---- Normalized query text --------\n%s\n", normalized_query);
 
-	elog(INFO, "---- hints for actual plan ----");
-	elog(INFO, "scan_str: \n%s", scan_str->data);
-	elog(INFO, "join_str: \n%s", join_str->data);
-	elog(INFO, "lead_str: \n%s", leadcxt->lead_str->data);
-	elog(INFO, "-------------------------------");
-	elog(INFO, "---- rows hint ----------------");
-	elog(INFO, "rows_str: \n%s", rows_str->data);
-	elog(INFO, "-------------------------------");
-	elog(INFO, "---- join count ---------------");
-	elog(INFO, "join_cnt: %d", join_cnt);
-	elog(INFO, "-------------------------------");
-	elog(INFO, "---- total diff rows of joins ----");
-	elog(INFO, "total_diff_rows: %.0f", total_diff_rows);
-	elog(INFO, "-------------------------------");
+	elog(INFO, "---- Hints for current plan ------\n%s\n%s\n%s", scan_str->data, join_str->data, leadcxt->lead_str->data);
+	elog(INFO, "---- Rows hint (feedback info)----\n%s", rows_str->data);
+	elog(INFO, "---- Join count ------------------\n\t\t%d", join_cnt);
+	elog(INFO, "---- Total diff rows of joins ----\n\t\t%.0f", total_diff_rows);
 
 	/* store above data to tables */
 	/* 
@@ -1169,7 +1144,7 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 
 	/* get application_name */
 	aplname = GetConfigOptionByName("application_name", NULL, false);
-	elog(INFO, "aplname: %s", aplname);
+	elog(INFO, "---- aplname ---------------------\n\t\t%s", aplname);
 
 	/* insert totaltime and hints to plan_repo.plan_history */
  	sql = makeStringInfo();
