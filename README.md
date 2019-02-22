@@ -2,9 +2,9 @@ pg_plan_advsr
 =============
 
 pg_plan_advsr is a PostgreSQL extension that provides Automated execution plan tuning using feedback loop.
-This extension might help you if you have an analytic query which has many joins, and you'd like to get an efficient plan to reduce execution time.
+This extension might help you if you have an analytic query which has many joins and aggregates and you'd like to get an efficient plan to reduce execution time.
 
-* Note: For now, This extension is in POC phase. Not production ready. *
+* Note: For now, This extension is in POC phase. Not production ready. 
 
 This README contains the following sections:
 
@@ -62,13 +62,11 @@ Third, enable feedback loop by the following command.
 
 	select pg_plan_advsr_enable_feedback();
 
-Fourth, execute the previous query (explain analyze ...) twice, and you can see the plan was changed and the execution time was shortened.  
-Because pg_plan_advsr fixed an estimated row error, therefore planner chose more efficient plan than before.
+Fourth, execute the previous query (explain analyze ...) twice, and you can see the plan was changed and the execution time was shortened because pg_plan_advsr fixed an estimated row error therefore planner chose more efficient plan than before.
 
 e.g.
 
-Before tuning
-
+#### Before tuning
 	
 	                                                          QUERY PLAN
 	-------------------------------------------------------------------------------------------------------------------------------
@@ -91,8 +89,9 @@ Before tuning
 	(16 rows)
 	
 
-After tuning: the topmost join method is changed from Hash Join to Nested loop. The execution time changed 329 ms -> 34 ms.
+#### After tuning
 
+The topmost join method is changed from Hash Join to Nested loop. The execution time changed 329 ms -> 34 ms.
 	
 	                                                        QUERY PLAN
 	---------------------------------------------------------------------------------------------------------------------------
@@ -113,7 +112,9 @@ After tuning: the topmost join method is changed from Hash Join to Nested loop. 
 	(14 rows)
 	
 
-Finally, you can see plan changes and execution time changes to check plan_repo.plan_history_table, if you want. See: [Usage](#4-usage)
+Finally, you can see plan changes and execution time changes to check plan_repo.plan_history_table, if you want. 
+
+See: [Usage](#4-usage)
 
 
 
@@ -175,7 +176,7 @@ Table "plan_repo.raw_queries"
 
 	"ON": Enable pg_plan_advsr. 
 	It allows creating various hints for fixing estimation row errors and also for reproducing a plan.
-	It stores them to the plan_history table. If you want to use "auto plan tuning using feedback loop", you have to execute below function pg_plan_advsr_enable_feedback().
+	It also stores them to the plan_history table. If you want to use "auto plan tuning using feedback loop", you have to execute below function pg_plan_advsr_enable_feedback().
 	Default setting is "ON". 
 
 - pg_plan_advsr_enable_feedback()
@@ -253,15 +254,15 @@ pg_plan_advsr uses pg_hint_plan and pg_store_plans cooperatively.
 - PostgreSQL => 10.4 (However, not supported PG11 yet.) 
 - pg_hint_plan => 1.3.2
 - pg_store_plans => 1.3
-
+- RHEL/CentOS = 7.x (6.x is not tested but I suppose it works)
 
 
 6 Installation
 ==============
 
 TBA
-
-	$ cd contrib
+	(Set the PATH environment variable to pg_config of your PostgreSQL)
+	
 	$ wget https://github.com/ossc-db/pg_hint_plan/archive/REL10_1_3_2.tar.gz
 	$ wget https://github.com/ossc-db/pg_store_plans/archive/1.3.tar.gz
 	$ git clone https://github.com/ossc-db/pg_plan_advsr.git pg_plan_advsr
@@ -276,7 +277,7 @@ TBA
 	$ make && make install
 	
 	$ cd ../pg_store_plans-1.3
-	$ make && make install
+	$ $ make USE_PGXS=1 all install
 	
 	$ cd ../pg_plan_advsr
 	$ make && make install 
@@ -310,11 +311,9 @@ TBA
 These presentation materials are useful to know concepts and its architecture, and these show 
 a benchmark result by using Join order benchmark:
 
-[AUTO PLAN TUNING USING FEEDBACK LOOP at PGConf.Eu 2018]
-https://www.postgresql.eu/events/pgconfeu2018/schedule/session/2132-auto-plan-tuning-using-feedback-loop/
+* [AUTO PLAN TUNING USING FEEDBACK LOOP at PGConf.Eu 2018](https://www.postgresql.eu/events/pgconfeu2018/schedule/session/2132-auto-plan-tuning-using-feedback-loop/)
 
-[AUTO PLAN TUNING USING FEEDBACK LOOP at PGConf.Russia 2019]
-https://pgconf.ru/en/2019/242844
+* [AUTO PLAN TUNING USING FEEDBACK LOOP at PGConf.Russia 2019](https://pgconf.ru/en/2019/242844)
 
 
 8 Limitations
@@ -337,11 +336,8 @@ See: TODO file
 
 pg_plan_advsr uses pg_hint_plan and pg_store_plans, it would be better to check these document to know their limitations.
 
-[pg_hint_plan]
-https://github.com/ossc-db/pg_hint_plan/blob/master/doc/pg_hint_plan.html
-
-[pg_store_plans]
-https://github.com/ossc-db/pg_store_plans/blob/master/doc/index.html
+* [pg_hint_plan](https://github.com/ossc-db/pg_hint_plan/blob/master/doc/pg_hint_plan.html)
+* [pg_store_plans](https://github.com/ossc-db/pg_store_plans/blob/master/doc/index.html)
 
 
 9 Support
