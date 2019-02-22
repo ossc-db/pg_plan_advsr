@@ -20,10 +20,10 @@
 /*
 #include "guc.h"
 */
-/* came from pg_hint_plan REL10_1_3_0 */
+/* came from pg_hint_plan REL10_1_3_2 */
 #include "normalize_query.h"
 
-/* came from pg_store_plans.c */
+/* came from pg_store_plans 1.3 */
 #include "pgsp_json.h"
 
 PG_MODULE_MAGIC;
@@ -38,7 +38,7 @@ typedef struct LeadingContext
 	ExplainState *es;
 } LeadingContext;
 
-/* scan method/join method/leading hints yamada */
+/* scan method/join method/leading hints */
 static StringInfo scan_str;
 static StringInfo join_str;
 static StringInfo rows_str;
@@ -49,7 +49,7 @@ static uint32 pgsp_queryid;
 /* hash value made by normalized_plan */
 static uint32 pgsp_planid;
 
-/* estimated/actual rows number yamada */
+/* estimated/actual rows number */
 static double est_rows;
 static double act_rows;
 static double diff_rows; /* = act_rows - est_rows */
@@ -1061,10 +1061,10 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 	if (IsA(ps, GatherState) &&((Gather *) ps->plan)->invisible)
 		ps = outerPlanState(ps);
 
-	/* yamada create scan_str, join_str, rows_str */
+	/* Create scan_str, join_str, rows_str */
 	CreateScanJoinRowsHints(ps, NIL, NULL, NULL, es);
 
-	/* yamada create leading_str */
+	/* Create leading_str */
 	leadcxt = (LeadingContext *) palloc0(sizeof(LeadingContext));
 	leadcxt->lead_str = makeStringInfo();
 	leadcxt->es = es;
@@ -1297,7 +1297,7 @@ get_target_relname(Index rti, ExplainState *es)
 
 
 /* 
- * yamada Create scan, join and rows hints.
+ * Create scan, join and rows hints.
  * This function is based on ExplainNode in explain.c
  */
 /*
@@ -1353,7 +1353,7 @@ elog(DEBUG1, "    Parent Relationship: %s", relationship);
 		elog(INFO, "-------------------------------");
 	}
 
-	/* yamada Create scan hints using ExplainScanTarget */
+	/* Create scan hints using ExplainScanTarget */
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
@@ -1426,7 +1426,7 @@ elog(DEBUG1, "    Parent Relationship: %s", relationship);
 		double		rows = planstate->instrument->ntuples / nloops; /* actual rows */
 
 		/* 
-		 * yamada Create join and rows hints.
+		 * Create join and rows hints.
 		 * In this current design, we use actual rows number as a rows hint.
 		 */
 		StringInfo tmp_relnames = makeStringInfo();
@@ -1606,7 +1606,6 @@ elog(DEBUG1, "### pg_plan_advsr_NewExplainState ###");
 	/* Prepare output buffer. */
 	es->str = makeStringInfo();
 
-	/* yamada */
 	scan_str = makeStringInfo();
 	join_str = makeStringInfo();
 	rows_str = makeStringInfo();
@@ -1647,7 +1646,6 @@ elog(DEBUG1, "    # pg_plan_advsr_ExplainTargetRel #");
 	if (refname == NULL)
 		refname = rte->eref->aliasname;
 
-	/* yamada */
 	switch (nodeTag(plan))
 	{
 		case T_SeqScan:
