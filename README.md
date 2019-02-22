@@ -271,13 +271,14 @@ TBA
 	$ tar xvzf 1.3.tar.gz
 	
 	$ cp pg_hint_plan-REL10_1_3_2/pg_stat_statements.c pg_plan_advsr/
+	$ cp pg_hint_plan-REL10_1_3_2/normalize_query.h pg_plan_advsr/
 	$ cp pg_store_plans-1.3/pgsp_json*.[ch] pg_plan_advsr/
 	
 	$ cd pg_hint_plan-REL10_1_3_2
 	$ make && make install
 	
 	$ cd ../pg_store_plans-1.3
-	$ $ make USE_PGXS=1 all install
+	$ make USE_PGXS=1 all install
 	
 	$ cd ../pg_plan_advsr
 	$ make && make install 
