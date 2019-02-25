@@ -213,8 +213,8 @@ There are two types of usage.
 
 	Note:
 	
-		- A plan may temporarily worse than an initial plan during auto tuning phase.
-		- Use stable data for auto plan tuning. This extension doesn't get converged plan (the ideal plan for the data) if it was updating concurrently.
+	- A plan may temporarily worse than an initial plan during auto tuning phase.
+	- Use stable data for auto plan tuning. This extension doesn't get converged plan (the ideal plan for the data) if it was updating concurrently.
 
 - For only getting hints to reproduce a plan on other databases
 
@@ -222,31 +222,31 @@ There are two types of usage.
 	Execute EXPLAIN ANALYZE command (which is your query). 
 	You can get hints by using the below queries:
 
-	    select pgsp_queryid, pgsp_planid, execution_time, scan_hint, join_hint, lead_hint from plan_repo.plan_history order by id;
+	  select pgsp_queryid, pgsp_planid, execution_time, scan_hint, join_hint, lead_hint from plan_repo.plan_history order by id;
 
 	e.g.
 	
-	     pgsp_queryid | pgsp_planid | execution_time |                scan_hint                |     join_hint      |        lead_hint
-	    --------------+-------------+----------------+-----------------------------------------+--------------------+-------------------------
-	       4173287301 |  3707748199 |        265.179 | SEQSCAN(t2) SEQSCAN(x) INDEXSCAN(t1)    | HASHJOIN(t2 t1 x) +| LEADING( (t2 (x t1 )) )
-	                  |             |                |                                         | NESTLOOP(t1 x)     |
-	       4173287301 |  1101439786 |          2.149 | SEQSCAN(x) INDEXSCAN(t1) INDEXSCAN(t2)  | NESTLOOP(t2 t1 x) +| LEADING( ((x t1 )t2 ) )
-	                  |             |                |                                         | NESTLOOP(t1 x)     |
+	   pgsp_queryid | pgsp_planid | execution_time |                scan_hint                |     join_hint      |        lead_hint
+	  --------------+-------------+----------------+-----------------------------------------+--------------------+-------------------------
+	     4173287301 |  3707748199 |        265.179 | SEQSCAN(t2) SEQSCAN(x) INDEXSCAN(t1)    | HASHJOIN(t2 t1 x) +| LEADING( (t2 (x t1 )) )
+	                |             |                |                                         | NESTLOOP(t1 x)     |
+	     4173287301 |  1101439786 |          2.149 | SEQSCAN(x) INDEXSCAN(t1) INDEXSCAN(t2)  | NESTLOOP(t2 t1 x) +| LEADING( ((x t1 )t2 ) )
+	                |             |                |                                         | NESTLOOP(t1 x)     |
 
-	    # \a
-	    Output format is unaligned.
-	    # \t
-	    Tuples only is on.
+	  # \a
+	  Output format is unaligned.
+	  # \t
+	  Tuples only is on.
 	    
-	    select plan_repo.get_hint(1101439786);
+	  select plan_repo.get_hint(1101439786);
 	    
-	    /*+
-	    LEADING( ((x t1 )t2 ) )
-	    NESTLOOP(t2 t1 x)
-	    NESTLOOP(t1 x)
-	    SEQSCAN(x) INDEXSCAN(t1) INDEXSCAN(t2)
-	    */
-	    --1101439786
+	  /*+
+	  LEADING( ((x t1 )t2 ) )
+	  NESTLOOP(t2 t1 x)
+	  NESTLOOP(t1 x)
+	  SEQSCAN(x) INDEXSCAN(t1) INDEXSCAN(t2)
+	  */
+	  --1101439786
 	    
 
 5 Installation Requirements
