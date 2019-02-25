@@ -209,9 +209,12 @@ There are two types of usage.
 	select pg_plan_advsr_enable_feedback();
 	Execute EXPLAIN ANALYZE command (which is your query) repeateadly until row estimation errors had vanished.
 
-	See shell script file as an example: XXXXX.sh
+	See shell script file as an example: [JOB/auto_tune_31c.sh](https://github.com/ossc-db/pg_plan_advsr/blob/master/JOB/auto_tune_31c.sh)
 
-	Note: 
+	Note:
+	
+		- A plan may temporarily worse than an initial plan during auto tuning phase.
+		- Use stable data for auto plan tuning. This extension doesn't get converged plan (the ideal plan for the data) if it was updating concurrently.
 
 - For only getting hints to reproduce a plan on other databases
 
