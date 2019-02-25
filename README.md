@@ -112,7 +112,7 @@ The topmost join method is changed from Hash Join to Nested loop. The execution 
 	(14 rows)
 	
 
-Finally, you can see plan changes and execution time changes to check plan_repo.plan_history_table, if you want. 
+Finally, you can see plan changes and execution time changes to check plan_repo.plan_history table, if you want. 
 
 See: [Usage](#4-usage)
 
@@ -261,7 +261,12 @@ pg_plan_advsr uses pg_hint_plan and pg_store_plans cooperatively.
 ==============
 
 TBA
-	(Set the PATH environment variable to pg_config of your PostgreSQL)
+
+- Prerequisite for installation
+	- Install postgresql-devel package if you installed PostgreSQL by rpm files
+	- Set the PATH environment variable to pg_config of your PostgreSQL
+
+Operations
 	
 	$ wget https://github.com/ossc-db/pg_hint_plan/archive/REL10_1_3_2.tar.gz
 	$ wget https://github.com/ossc-db/pg_store_plans/archive/1.3.tar.gz
@@ -333,7 +338,7 @@ Not tested
  - Partitioned Table
  - JIT
 
-See: TODO file
+See: [TODO file](https://github.com/ossc-db/pg_plan_advsr/blob/master/TODO)
 
 pg_plan_advsr uses pg_hint_plan and pg_store_plans, it would be better to check these document to know their limitations.
 
