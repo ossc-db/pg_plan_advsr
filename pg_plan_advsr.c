@@ -118,15 +118,18 @@ ExplainState * pg_plan_advsr_NewExplainState(void);
 void pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc);
 
 void CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
-            const char *relationship, const char *plan_name,
-            ExplainState *es);
+							 const char *relationship, const char *plan_name,
+							 ExplainState *es);
 
 /* This function called by planstate_tree_walker for creating Leading Hints */
 bool CreateLeadingHint(PlanState *planstate, LeadingContext *lead);
 
 void store_info_to_tables(double totaltime, const char *sourcetext); /* store query, hints and diff to tables */
 
-void get_rows_hint_from_table(const char *conninfo, const char *norm_query_str, StringInfo prev_rows_hint, char *aplname);
+void get_rows_hint_from_table(const char *conninfo,
+							  const char *norm_query_str,
+							  StringInfo prev_rows_hint,
+							  char *aplname);
 
 /* these functions based on explain.c */
 bool ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used);
@@ -135,15 +138,15 @@ bool pg_plan_advsr_planstate_tree_walker(PlanState *planstate,
 										 bool (*walker) (),
 										 void *context);
 bool pg_plan_advsr_planstate_walk_subplans(List *plans,
-										 bool (*walker) (),
-										 void *context);
+										   bool (*walker) (),
+										   void *context);
 bool pg_plan_advsr_planstate_walk_members(List *plans, 
 										  PlanState **planstates,
 										  bool (*walker) (),
 										  void *context);
 
 void pg_plan_advsr_ExplainSubPlans(List *plans, List *ancestors,
-                const char *relationship, ExplainState *es);
+								   const char *relationship, ExplainState *es);
 
 void pg_plan_advsr_ExplainScanTarget(Scan *plan, ExplainState *es);
 void pg_plan_advsr_ExplainTargetRel(Plan *plan, Index rti, ExplainState *es);
@@ -243,16 +246,16 @@ void _PG_init(void)
 	prev_ExecutorEnd_hook = ExecutorEnd_hook;
 	ExecutorEnd_hook = pg_plan_advsr_ExecutorEnd_hook;
 
-    DefineCustomBoolVariable("pg_plan_advsr.enabled",
-                             "Enable / Disable pg_plan_advsr",
-                             NULL,
-                             &pg_plan_advsr_is_enabled,
-                             true,
-                             PGC_USERSET,
-                             0,
-                             NULL,
-                             NULL,
-                             NULL);
+	DefineCustomBoolVariable("pg_plan_advsr.enabled",
+							 "Enable / Disable pg_plan_advsr",
+							 NULL,
+							 &pg_plan_advsr_is_enabled,
+							 true,
+							 PGC_USERSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
 }
 
 /* Uninstall hooks. */
@@ -290,7 +293,7 @@ pg_plan_advsr_enable_feedback(PG_FUNCTION_ARGS)
 	(void) set_config_option("pg_hint_plan.debug_print", "ON",
 							  PGC_USERSET, PGC_S_OVERRIDE,
 							  GUC_ACTION_SAVE, true, 0, false);
-    PG_RETURN_VOID();
+	PG_RETURN_VOID();
 }
 
 /* 
@@ -312,7 +315,7 @@ pg_plan_advsr_disable_feedback(PG_FUNCTION_ARGS)
 	(void) set_config_option("pg_hint_plan.debug_print", "OFF",
 							  PGC_USERSET, PGC_S_OVERRIDE,
 							  GUC_ACTION_SAVE, true, 0, false);
-    PG_RETURN_VOID();
+	PG_RETURN_VOID();
 }
 
 
@@ -363,11 +366,11 @@ elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook start ##");
 			 * a terminating NULL.
 			 */
 			query_len = strlen(query_str) + 1;
-            normalized_query =
-                generate_normalized_query(&jstate, query_str,
-                                          query->stmt_location,
-                                          &query_len,
-                                          GetDatabaseEncoding());
+			normalized_query =
+				generate_normalized_query(&jstate, query_str,
+										  query->stmt_location,
+										  &query_len,
+										  GetDatabaseEncoding());
 
 		}
 /*
@@ -389,30 +392,29 @@ static void pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 											  DestReceiver *dest,
 											  char *completionTag)
 {
-	isExplain = query_or_expression_tree_walker(
-						    (Node *) pstmt,
-						    pg_plan_advsr_query_walker,
-						    NULL,
-							0);
+	isExplain = query_or_expression_tree_walker((Node *) pstmt,
+												pg_plan_advsr_query_walker,
+												NULL,
+												0);
 
 	if (prev_ProcessUtility_hook)
 		prev_ProcessUtility_hook(
-						  pstmt,
-						  queryString,
-						  context,
-						  params,
-						  queryEnv,
-						  dest, 
-						  completionTag);
+								 pstmt,
+								 queryString,
+								 context,
+								 params,
+								 queryEnv,
+								 dest, 
+								 completionTag);
 	else
 		standard_ProcessUtility(
-						  pstmt,
-						  queryString,
-						  context,
-						  params,
-				  		  queryEnv,
-						  dest, 
-						  completionTag);
+								pstmt,
+								queryString,
+								context,
+								params,
+								queryEnv,
+								dest, 
+								completionTag);
 }
 
 /* ExecutorStart, Run and Finish are came from pg_store_plans.c */
@@ -898,19 +900,19 @@ pg_plan_advsr_planstate_walk_members(List *plans, PlanState **planstates,
 /* return relnames */
 char *get_relnames(ExplainState *es, Relids relids)
 {
-    int         x;
+	int x;
 	int first = true;
 	StringInfo relnames = makeStringInfo();
 
-    x = -1;
-    while ((x = bms_next_member(relids, x)) >= 0)
-    {
+	x = -1;
+	while ((x = bms_next_member(relids, x)) >= 0)
+	{
 		if(!first)
 			appendStringInfo(relnames, " %s", get_target_relname(x, es));
 		else
 			appendStringInfo(relnames, "%s", get_target_relname(x, es));
 		first = false;
-    }
+	}
 	return relnames->data;
 }
 
@@ -1119,7 +1121,7 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 	char *aplname;
 	StringInfo sql;
 	StringInfo del_sql;
- 	StringInfo prev_rows_hint;
+	StringInfo prev_rows_hint;
 	StringInfo new_hint;
 
 	char *before = "'";
@@ -1127,15 +1129,15 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 	char *tmpsql;
 	char *output;
 
-    /*
-     * Calculate MD5 hash of the normalized query as a norm_query_hash 
-     */
-    if (! pg_md5_hash(normalized_query, strlen(normalized_query), md5))
-    {
-        ereport(ERROR,
-                (errcode(ERRCODE_OUT_OF_MEMORY),
-                errmsg("pg_md5_hash: out of memory")));
-    }
+	/*
+	 * Calculate MD5 hash of the normalized query as a norm_query_hash 
+	 */
+	if (! pg_md5_hash(normalized_query, strlen(normalized_query), md5))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				errmsg("pg_md5_hash: out of memory")));
+	}
 
 	/* get connect string */
 	connstr = makeStringInfo();
@@ -1147,7 +1149,7 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 	elog(INFO, "---- aplname ---------------------\n\t\t%s", aplname);
 
 	/* insert totaltime and hints to plan_repo.plan_history */
- 	sql = makeStringInfo();
+	sql = makeStringInfo();
 	if (!rows_str->data)
 		rows_str->data = "";
 	appendStringInfo(sql, INSERT_PLAN_HISTORY_SQL,
@@ -1172,7 +1174,7 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 	}
 
 	/* insert queryhash and normalized query text to plan_repo.norm_queries */
- 	sql = makeStringInfo();
+	sql = makeStringInfo();
 	appendStringInfo(sql, INSERT_NORM_QUERIES_SQL,
 									md5,
 									normalized_query);
@@ -1195,7 +1197,7 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 	elog(DEBUG3, "tmpsql: %s", tmpsql);
 	elog(DEBUG3, "output: %s", output);
 
- 	sql = makeStringInfo();
+	sql = makeStringInfo();
 	appendStringInfo(sql, INSERT_RAW_QUERIES_SQL,
 									md5,
 									output);
@@ -1213,7 +1215,7 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 	/* upsert hints to hint_plan.hints */
 	sql = makeStringInfo();
 	del_sql = makeStringInfo();
- 	prev_rows_hint = makeStringInfo();
+	prev_rows_hint = makeStringInfo();
 	new_hint = makeStringInfo();
 
 	/* get previous rows_hint from table */
@@ -1738,11 +1740,11 @@ execSQL_simple(const char *conninfo, const char *sql)
  */
 void get_rows_hint_from_table(const char *conninfo, const char *norm_query_str, StringInfo prev_rows_hint, char *aplname)
 {
-	PGconn		*con;
-	PGresult 	*res;
-	int			hint_fnum;
-	char 		*hint;
- 	StringInfo	sql = makeStringInfo();
+	PGconn    *con;
+	PGresult  *res;
+	int        hint_fnum;
+	char      *hint;
+	StringInfo sql = makeStringInfo();
 	hint = NULL;
 
 	/* Try to connect to primary server */
@@ -1786,40 +1788,40 @@ elog(DEBUG3, "prev_rows_hint: %s", hint);
 /* change ' to '' in query */ 
 void replaceAll(char *buf, const char *before, const char *after, char *output)
 {
-        char *p_tmp;
-        char *p_buf;
-        char *p_search;
-        const char *p_after;
-        int len_before = strlen(before);
-        p_tmp = output;
-        p_buf = buf;
+		char *p_tmp;
+		char *p_buf;
+		char *p_search;
+		const char *p_after;
+		int len_before = strlen(before);
+		p_tmp = output;
+		p_buf = buf;
 
 elog(DEBUG3, "* buf   : %s\n", buf);
 elog(DEBUG3, "* before: %s\n", before);
 elog(DEBUG3, "* after : %s\n", after);
 
-        while((p_search = strstr(p_buf, before)) != NULL) {
+		while((p_search = strstr(p_buf, before)) != NULL) {
 
-                //検索できた箇所の1つ前までコピー
-                while( p_buf < p_search ) {
-                        *p_tmp++ = *p_buf++;
-                }
+				//検索できた箇所の1つ前までコピー
+				while( p_buf < p_search ) {
+					*p_tmp++ = *p_buf++;
+				}
 
-                //新文字列をコピー
-                p_after = after;
-                while( *p_after != '\0'){
-                        *p_tmp++ = *p_after++;
-                }
+				//新文字列をコピー
+				p_after = after;
+				while( *p_after != '\0'){
+					*p_tmp++ = *p_after++;
+				}
 
-                //旧文字列はスキップ
-                p_buf += len_before;
-        }
+				//旧文字列はスキップ
+				p_buf += len_before;
+		}
 
-        //残りの処理
-        while(*p_buf != '\0') {
-                *p_tmp++ = *p_buf++;
-        }
-        *p_tmp = '\0';
+		//残りの処理
+		while(*p_buf != '\0') {
+				*p_tmp++ = *p_buf++;
+		}
+		*p_tmp = '\0';
 
 elog(DEBUG3, "* output: %s\n", output);
 
@@ -1828,31 +1830,31 @@ elog(DEBUG3, "* output: %s\n", output);
 /* Create connstr from env */
 void get_connstr(StringInfo str)
 {
-	char       *env;
-	char       *pghost = "";
-	char       *pgport = "";
-	char       *login = NULL;
-	char       *dbName;
+	char *env;
+	char *pghost = "";
+	char *pgport = "";
+	char *login = NULL;
+	char *dbName;
 
-    if ((env = getenv("PGHOST")) != NULL && *env != '\0')
-        pghost = env;
+	if ((env = getenv("PGHOST")) != NULL && *env != '\0')
+		pghost = env;
 	else
 		pghost = "127.0.0.1";
 
-    if ((env = getenv("PGPORT")) != NULL && *env != '\0')
-        pgport = env;
+	if ((env = getenv("PGPORT")) != NULL && *env != '\0')
+		pgport = env;
 	else
 		pgport = "5432";
 
-    if ((env = getenv("PGUSER")) != NULL && *env != '\0')
-        login = env;
+	if ((env = getenv("PGUSER")) != NULL && *env != '\0')
+		login = env;
 	else
 		login = "postgres";
 
-    if ((env = getenv("PGDATABASE")) != NULL && *env != '\0')
-        dbName = env;
-    else
-        dbName = "postgres";
+	if ((env = getenv("PGDATABASE")) != NULL && *env != '\0')
+		dbName = env;
+	else
+		dbName = "postgres";
 
 	/*
 		*connstr = "host=127.0.0.1 port=5151 dbname=postgres";
