@@ -367,7 +367,7 @@ If you want to report a problem with pg_plan_advsr, please include the following
 If you have a problem or question or any kind of feedback, the preferred option is to open an issue on GitHub:  
 https://github.com/ossc-db/pg_plan_advsr/issues
 This requires a GitHub account.
-
+Of course, any Pull request welcome!
 
 10 Author
 =========
