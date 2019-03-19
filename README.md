@@ -372,6 +372,6 @@ Of course, any Pull request welcome!
 10 Author
 =========
 
-Tatsuro Yamada (@yamatattsu)
+Tatsuro Yamada (yamatattsu at gmail dot com)
 
 Copyright (c) 2019, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
