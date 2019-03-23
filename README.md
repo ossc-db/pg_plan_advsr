@@ -268,7 +268,8 @@ TBA
 - Prerequisite for installation
 	- Install postgresql-devel package if you installed PostgreSQL by rpm files
 	- Set the PATH environment variable to pg_config of your PostgreSQL
-
+	- Set these environment variables PGHOST, PGPORT, PGDATABASE and PGUSER since this extension uses them as a connection string. If you didn't set the variables, the connection string is set "host=127.0.0.1 port=5432 dbname=postgres user=postgres" as a default.
+	
 Operations
 	
 	$ wget https://github.com/ossc-db/pg_hint_plan/archive/REL10_1_3_2.tar.gz
