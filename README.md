@@ -112,7 +112,7 @@ The topmost join method is changed from Hash Join to Nested loop. The execution 
 	(14 rows)
 	
 
-Finally, you can see plan changes and execution time changes to check plan_repo.plan_history table, if you want. 
+Finally, you can see plan changes and execution time changes to check plan_repo.plan_history table and pg_store_plans view, if you want. 
 
 See: [Usage](#4-usage)
 
@@ -206,9 +206,14 @@ There are two types of usage.
 
 - For auto plan tuning
 
-	select pg_plan_advsr_enable_feedback();
-	Execute EXPLAIN ANALYZE command (which is your query) repeateadly until row estimation errors had vanished.
+	First, Run select "pg_plan_advsr_enable_feedback();".
+	Then, Execute EXPLAIN ANALYZE command (which is your query) repeatedly until row estimation errors had vanished.
+	Finally, You can check a result of the tuning by using the below queries:
 
+	  select pgsp_queryid, pgsp_planid, execution_time, scan_hint, join_hint, lead_hint from plan_repo.plan_history order by id;
+	  
+	  select queryid, planid, plan from pg_store_plans where queryid='your pgsp_queryid in plan_history' order by first_call;
+	  
 	See shell script file as an example: [JOB/auto_tune_31c.sh](https://github.com/ossc-db/pg_plan_advsr/blob/master/JOB/auto_tune_31c.sh)
 
 	Note:
@@ -216,11 +221,11 @@ There are two types of usage.
 	- A plan may temporarily worse than an initial plan during auto tuning phase.
 	- Use stable data for auto plan tuning. This extension doesn't get converged plan (the ideal plan for the data) if it was updating concurrently.
 
-- For only getting hints to reproduce a plan on other databases
+- For only getting hints of current query to reproduce a plan on other databases
 
-	select pg_plan_advsr_disable_feedback();
-	Execute EXPLAIN ANALYZE command (which is your query). 
-	You can get hints by using the below queries:
+	First, Run "select pg_plan_advsr_disable_feedback();". 
+	Then, Execute EXPLAIN ANALYZE command (which is your query). 
+	Finally, You can get hints by using the below queries:
 
 	  select pgsp_queryid, pgsp_planid, execution_time, scan_hint, join_hint, lead_hint from plan_repo.plan_history order by id;
 
