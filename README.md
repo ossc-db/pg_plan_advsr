@@ -2,7 +2,7 @@ pg_plan_advsr
 =============
 
 pg_plan_advsr is a PostgreSQL extension that provides Automated execution plan tuning using feedback loop.
-This extension might help you if you have an analytic query which has many joins and aggregates and you'd like to get an efficient plan to reduce execution time.
+This extension might help you if you have an analytic query which has many joins and aggregates and you'd like to get an efficient plan to reduce execution time. This extension is intended to use in a plan tuning phase at the end of system development.
 
 * Note: For now, This extension is in POC phase. Not production ready. 
 
