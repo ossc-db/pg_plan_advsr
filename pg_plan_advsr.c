@@ -1,3 +1,16 @@
+/*-------------------------------------------------------------------------
+ *
+ * pg_plan_advsr.c
+ *		Automatic plan tuning by correcting row count estimation errors 
+ *		using a feedback loop between planner and executor.
+ *
+ * Copyright (c) 2019, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+ *
+ * IDENTIFICATION
+ *	  pg_plan_advsr.c
+ *
+ *-------------------------------------------------------------------------
+ */
 #include "postgres.h"
 #include "parser/analyze.h"
 #include "parser/parsetree.h"
