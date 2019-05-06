@@ -18,6 +18,7 @@ This README contains the following sections:
 8. [Limitations](#8-limitations)
 9. [Support](#9-support)
 10. [Author](#10-author)
+11. [Acknowledgments](#11-acknowledgments)
 
 pg_plan_advsr was created by Tatsuro Yamada.
 
@@ -135,37 +136,37 @@ Tables
 
 Table "plan_repo.plan_history"
 
-	      Column      |            Type             | Collation | Nullable |                      Default
-	------------------+-----------------------------+-----------+----------+----------------------------------------------------
-	 id               | integer                     |           | not null | nextval('plan_repo.plan_history_id_seq'::regclass)
-	 norm_query_hash  | text                        |           |          |
-	 pgsp_queryid     | bigint                      |           |          |
-	 pgsp_planid      | bigint                      |           |          |
-	 execution_time   | numeric                     |           |          |
-	 rows_hint        | text                        |           |          |
-	 scan_hint        | text                        |           |          |
-	 join_hint        | text                        |           |          |
-	 lead_hint        | text                        |           |          |
-	 diff_of_joins    | numeric                     |           |          |
-	 join_cnt         | integer                     |           |          |
-	 application_name | text                        |           |          |
-	 timestamp        | timestamp without time zone |           |          |
+	      Column      |            Type             | Description
+	------------------+-----------------------------+-------------------------------------------------------------------------------
+	 id               | integer                     | Sequence as a primary key: nextval('plan_repo.plan_history_id_seq'::regclass)
+	 norm_query_hash  | text                        | MD5 based on normalized query text
+	 pgsp_queryid     | bigint                      | Queryid of pg_store_plans
+	 pgsp_planid      | bigint                      | Planid of pg_sotre_plans
+	 execution_time   | numeric                     | Execution time (ms) of this planid 
+	 rows_hint        | text                        | Rows_hint of this plan
+	 scan_hint        | text                        | Scan_hint of this plan
+	 join_hint        | text                        | Join_hint of this plan
+	 lead_hint        | text                        | Leading_hint of this plan
+	 diff_of_joins    | numeric                     | Sum of estimation row error of joins (NULL means no estimation error) 
+	 join_cnt         | integer                     | Join number of this plan
+	 application_name | text                        | Application name of client tool such as "psql"
+	 timestamp        | timestamp without time zone | Timestamp of this record inserted
 
 Table "plan_repo.norm_queries"
 
-	      Column       | Type | Collation | Nullable | Default
-	-------------------+------+-----------+----------+---------
-	 norm_query_hash   | text |           |          |
-	 norm_query_string | text |           |          |
+	      Column       |           Type             | Description
+	-------------------+----------------------------+-----------------------------------
+	 norm_query_hash   | text                       | MD5 based on normalized query text
+	 norm_query_string | text                       | Normalized query text
 
 Table "plan_repo.raw_queries"
 
-	      Column      |            Type             | Collation | Nullable |                           Default
-	------------------+-----------------------------+-----------+----------+-------------------------------------------------------------
-	 norm_query_hash  | text                        |           |          |
-	 raw_query_id     | integer                     |           | not null | nextval('plan_repo.raw_queries_raw_query_id_seq'::regclass)
-	 raw_query_string | text                        |           |          |
-	 timestamp        | timestamp without time zone |           |          |
+	      Column      |            Type             | Description
+	------------------+-----------------------------+----------------------------------------------------------------------------------------
+	 norm_query_hash  | text                        | MD5 based on normalized query text
+	 raw_query_id     | integer                     | Sequence of raw query text: nextval('plan_repo.raw_queries_raw_query_id_seq'::regclass)
+	 raw_query_string | text                        | Raw query text (not normalized)
+	 timestamp        | timestamp without time zone | Timestamp of this record inserted
 
 
 
@@ -375,9 +376,25 @@ https://github.com/ossc-db/pg_plan_advsr/issues
 This requires a GitHub account.
 Of course, any Pull request welcome!
 
+
 10 Author
 =========
 
 Tatsuro Yamada (yamatattsu at gmail dot com)
 
 Copyright (c) 2019, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+
+
+11 Acknowledgments
+==================
+
+The following individuals (in alphabetical order) have contributed to pg_plan_advsr as patch authors, reviewers, testers, advisers, or reporters of issues. Thanks a lot!
+
+David Pitts
+Etsuro Fujita
+Julien Rouhaud
+Kaname Furutani
+Kyotaro Horiguchi
+Laurenz Albe
+Nuko Yokohama
+
