@@ -87,6 +87,8 @@ static StringInfo connstr;
 /* GUC variables */
 /* enabling / disabling pg_plan_advsr during EXPLAIN ANALYZE */
 static bool pg_plan_advsr_is_enabled;
+/* enabling / disable quiet mode */
+static bool pg_plan_advsr_is_quieted;
 
 /* Saved hook values in case of unload */
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
@@ -264,6 +266,17 @@ void _PG_init(void)
 							 NULL,
 							 &pg_plan_advsr_is_enabled,
 							 true,
+							 PGC_USERSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("pg_plan_advsr.quieted",
+							 "Enable / Disable pg_plan_advsr's quiet mode",
+							 NULL,
+							 &pg_plan_advsr_is_quieted,
+							 false,
 							 PGC_USERSET,
 							 0,
 							 NULL,
@@ -1091,23 +1104,22 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 
 	/* queryId is made by pg_stat_statements */
 	pgsp_queryid = hash_query(queryDesc->sourceText);
-	elog(INFO, "---- pgsp_queryid ----------------\n\t\t%u", pgsp_queryid);
-
 	pgsp_planid = create_pgsp_planid(queryDesc);
-	elog(INFO, "---- pgsp_planid -----------------\n\t\t%u", pgsp_planid);
-
 	totaltime = queryDesc->totaltime ? queryDesc->totaltime->total * 1000.0 : 0;
-	elog(INFO, "---- Execution Time --------------\n\t\t%0.3f ms", totaltime);
 
-	elog(DEBUG3, "---- Query text -------------------\n%s\n", queryDesc->sourceText);
-
-	/* normalized_query is made by post_parse_analyze_hook function */
-	elog(DEBUG3, "---- Normalized query text --------\n%s\n", normalized_query);
-
-	elog(INFO, "---- Hints for current plan ------\n%s\n%s\n%s", scan_str->data, join_str->data, leadcxt->lead_str->data);
-	elog(INFO, "---- Rows hint (feedback info)----\n%s", rows_str->data);
-	elog(INFO, "---- Join count ------------------\n\t\t%d", join_cnt);
-	elog(INFO, "---- Total diff rows of joins ----\n\t\t%.0f", total_diff_rows);
+	if ( ! pg_plan_advsr_is_quieted )
+	{
+		elog(INFO, "---- pgsp_queryid ----------------\n\t\t%u", pgsp_queryid);
+		elog(INFO, "---- pgsp_planid -----------------\n\t\t%u", pgsp_planid);
+		elog(INFO, "---- Execution Time --------------\n\t\t%0.3f ms", totaltime);
+		elog(DEBUG3, "---- Query text -------------------\n%s\n", queryDesc->sourceText);
+		/* normalized_query is made by post_parse_analyze_hook function */
+		elog(DEBUG3, "---- Normalized query text --------\n%s\n", normalized_query);
+		elog(INFO, "---- Hints for current plan ------\n%s\n%s\n%s", scan_str->data, join_str->data, leadcxt->lead_str->data);
+		elog(INFO, "---- Rows hint (feedback info)----\n%s", rows_str->data);
+		elog(INFO, "---- Join count ------------------\n\t\t%d", join_cnt);
+		elog(INFO, "---- Total diff rows of joins ----\n\t\t%.0f", total_diff_rows);
+	}
 
 	/* store above data to tables */
 	/* 
@@ -1159,7 +1171,8 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 
 	/* get application_name */
 	aplname = GetConfigOptionByName("application_name", NULL, false);
-	elog(INFO, "---- aplname ---------------------\n\t\t%s", aplname);
+	if ( ! pg_plan_advsr_is_quieted )
+		elog(INFO, "---- Application name-------------\n\t\t%s", aplname);
 
 	/* insert totaltime and hints to plan_repo.plan_history */
 	sql = makeStringInfo();
