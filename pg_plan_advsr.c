@@ -1011,6 +1011,7 @@ CreateLeadingHint(PlanState *planstate, LeadingContext *lead)
 		case T_SeqScan:
 		case T_CteScan:
 		case T_BitmapHeapScan:
+		case T_FunctionScan:
 			elog(DEBUG1, "seqscan: %u", ((Scan *) plan)->scanrelid);
 			appendStringInfo(lead->lead_str, "%s ", get_target_relname(((Scan *) plan)->scanrelid, lead->es));
 			break;
@@ -1653,6 +1654,7 @@ elog(DEBUG1, "    # pg_plan_advsr_ExplainTargetRel #");
 	{
 		case T_SeqScan:
 		case T_CteScan:
+		case T_FunctionScan:
 			if (scan_cnt > 0)
 				if (scan_cnt % 5 == 0)
 					appendStringInfo(scan_str, "\n");
