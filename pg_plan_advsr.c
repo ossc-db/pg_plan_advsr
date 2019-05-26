@@ -1340,21 +1340,25 @@ elog(DEBUG1, "    Parent Relationship: %s", relationship);
 	/* Remove initPlan-s such as CTE */
 	if (planstate->initPlan)
 	{
-		elog(INFO, "---- InitPlan -----------------");
+		if ( ! pg_plan_advsr_is_quieted )
+			elog(INFO, "---- InitPlan -----------------");
 		/* Remove it for leading hint */
 		planstate->initPlan = NULL;
 		/*
 		pg_plan_advsr_ExplainSubPlans(planstate->initPlan, ancestors, "InitPlan", es);
 		*/
-		elog(INFO, "-------------------------------");
+		if ( ! pg_plan_advsr_is_quieted )
+			elog(INFO, "-------------------------------");
 	}
 
 	/* Also remove subPlan-s */
 	if (planstate->subPlan)	
 	{
-		elog(INFO, "---- SubPlan ------------------");
+		if ( ! pg_plan_advsr_is_quieted )
+			elog(INFO, "---- SubPlan ------------------");
 		planstate->subPlan = NULL;
-		elog(INFO, "-------------------------------");
+		if ( ! pg_plan_advsr_is_quieted )
+			elog(INFO, "-------------------------------");
 	}
 
 	/* Create scan hints using ExplainScanTarget */
