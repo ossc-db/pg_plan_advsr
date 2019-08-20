@@ -1,26 +1,26 @@
 pg_plan_advsr/JOB
 =================
 
-Get schema and queries of JOB
------------------------------
+1 Get schema and queries of JOB
+-------------------------------
 	git clone https://github.com/gregrahn/join-order-benchmark 
 
 
-Get data (1.2GB)
-----------------
+2 Get dataset (1.2GB)
+---------------------
 	wget https://homepages.cwi.nl/~boncz/job/imdb.tgz
 
 	mkdir imdb
 	tar xvzf imdb.tgz -C ./imdb
 
 
-Create schema
--------------
+3 Create schema
+---------------
 	psql -f ./join-order-benchmark/schema.sql
 
 
-Load data and Create index
---------------------------
+4 Load dataset and Create indexes
+---------------------------------
 * Modify directrories in the following sql file to fit your environment
 
 	vi ./load_csv.sql
@@ -33,14 +33,19 @@ Load data and Create index
 	psql -f ./join-order-benchmark/fkindexes.sql
 
 
-Analyze table
--------------
+5 Analyze tables
+----------------
 	psql -f ./analyze_table.sql
 
 
-Auto tune (example)
--------------------
-* This script execute 31c_test.sql 16 times using psql to get an efficient plan.
+6 Modify parameters according to planner
+----------------------------------------
+* See [6 Install on README.md](https://github.com/ossc-db/pg_plan_advsr/#6-installation)
+
+
+7 Try Auto tune (example)
+-------------------------
+* This script execute 31c_test.sql 16 times using psql to get an efficient plan as a example. You can use other queries from the directory "./join-order-benchmark/" and the modfy the shell script.
 
 	./auto_tune_31c.sh
 
