@@ -1,6 +1,8 @@
 pg_plan_advsr/JOB
 =================
 
+You can create your verification environment for pg_plan_advsr by using the following seven procedures.
+
 1 Get schema and queries of JOB
 -------------------------------
 	git clone https://github.com/gregrahn/join-order-benchmark 
@@ -87,3 +89,4 @@ Result of Auto tune on my environment
  Execution time (ms)|  2171.253 |  2178.805 |  2132.115|
 
 
+Enjoy! :)
