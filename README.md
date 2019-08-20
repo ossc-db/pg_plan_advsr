@@ -319,17 +319,25 @@ Operations
 	max_parallel_workers = 0
 	----------------------
 	
-	---- Consider increase these numbers (optional) ----
+	---- Consider increase these numbers (optional, these are based on your query) ----
 	geqo_threshold = 12 -> XX
 	from_collapse_limit = 8 -> YY
 	join_collapse_limit = 8 -> ZZ
-	----------------------------------------------------
-	
+	-----------------------------------------------------------------------------------
+
+	---- Consider decrease the number (optional, it is based on your storage) ----
+	random_page_cost = 4 -> 2 (example)
+	------------------------------------------------------------------------------
+
 	$ pg_ctl start
 	$ psql 
 	# create extension pg_hint_plan;
 	# create extension pg_store_plans;
 	# create extension pg_plan_advsr;
+
+
+* You can try this extension with Join Order Benchmark as a example.
+See: [how_to_setup.md in JOB directory](https://github.com/ossc-db/pg_plan_advsr/blob/master/JOB/how_to_setup.md)
 
 
 7 Internals
