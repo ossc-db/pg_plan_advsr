@@ -40,7 +40,7 @@ pg_plan_advsr/JOB
 
 6 Modify parameters according to planner
 ----------------------------------------
-* See [6 Install on README.md](https://github.com/ossc-db/pg_plan_advsr/#6-installation)
+* See parameters: [6 Install in README.md](https://github.com/ossc-db/pg_plan_advsr/#6-installation)
 
 
 7 Try Auto tune (example)
@@ -54,7 +54,7 @@ pg_plan_advsr/JOB
 	select pgsp_queryid, pgsp_planid, execution_time, scan_hint, join_hint, lead_hint from plan_repo.plan_history order by id;
 	select queryid, planid, plan from pg_store_plans where queryid='your pgsp_queryid in plan_history' order by first_call;
 
-See: "4 Usage" in README.md
+See: [4 Usage in README.md](https://github.com/ossc-db/pg_plan_advsr/#4-usage)
 
 
 Result of Auto tune on my environment
