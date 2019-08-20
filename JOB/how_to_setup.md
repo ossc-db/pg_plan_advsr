@@ -74,14 +74,16 @@ Result of Auto tune on my environment
 
  31c_org.sql
 
- Iterations:                1st |       2nd |       3rd
- Planning time (ms):    269.044 |   238.506 |   263.925
- Execution time (ms): 76372.644 | 68143.267 | 68784.149
+ Iterations         |       1st |       2nd |       3rd|
+ -------------------|-----------|-----------|----------|
+ Planning time (ms) |   269.044 |   238.506 |   263.925|
+ Execution time (ms)| 76372.644 | 68143.267 | 68784.149|
 
  31c_hinted.sql
 
- Iterations:                1st |       2nd |       3rd
- Planning time (ms):    142.690 |   143.255 |   141.759
- Execution time (ms):  2171.253 |  2178.805 |  2132.115
+ Iterations         |       1st |       2nd |       3rd|
+ -------------------|-----------|-----------|----------|
+ Planning time (ms) |   142.690 |   143.255 |   141.759|
+ Execution time (ms)|  2171.253 |  2178.805 |  2132.115|
 
 
