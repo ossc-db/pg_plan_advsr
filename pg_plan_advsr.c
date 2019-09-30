@@ -180,7 +180,7 @@ bool execSQL(const char *conninfo, const char *sql, int nParams, const char **pa
 bool execSQL_simple(const char *conninfo, const char *sql);
 
 /* replace all before strings to after strings in buf strings */
-void replaceAll(char *buf, const char *before, const char *after, char *output);
+void replaceAll(char *buf, const char *before, const char *after);
 
 /* SQL */
 /* This is for pg_plan_advsr.feedback option */
@@ -1152,7 +1152,6 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 
 	char *before = "'";
 	char *after  = "\'\'";
-	char *tmpsql;
 	char *output;
 
 	/*
@@ -1216,13 +1215,11 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 
 	/* insert queryhash and raw query text to plan_repo.raw_queries */
 	/* should be replaced "'" to "''" in sql */
-	tmpsql = (char *)palloc(strlen(sourcetext) + 1);
 	output = (char *)palloc((int)strlen(sourcetext) * 1.5);
-	strcpy(tmpsql, sourcetext);
-	replaceAll(tmpsql, before, after, output);
-
-	elog(DEBUG3, "tmpsql: %s", tmpsql);
-	elog(DEBUG3, "output: %s", output);
+	strcpy(output, sourcetext);
+	elog(DEBUG3, "output(before): %s", output);
+	replaceAll(output, before, after);
+	elog(DEBUG3, "output(after): %s", output);
 
 	sql = makeStringInfo();
 	appendStringInfo(sql, INSERT_RAW_QUERIES_SQL,
@@ -1236,7 +1233,6 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 	{
 		elog(DEBUG3, "\ninsert success: raw_queries\n");
 	}
-	pfree(tmpsql);
 	pfree(output);
 
 	/* upsert hints to hint_plan.hints */
@@ -1817,46 +1813,35 @@ elog(DEBUG3, "prev_rows_hint: %s", hint);
 	}
 }
 
-/* change ' to '' in query */ 
-void replaceAll(char *buf, const char *before, const char *after, char *output)
+/*
+ * Replace all before strings to after strings in buf strings.
+ * NOTE: Assumes there is enough room in the buf buffer!
+ */
+void replaceAll(char *buf, const char *before, const char *after)
 {
-		char *p_tmp;
-		char *p_buf;
-		char *p_search;
-		const char *p_after;
-		int len_before = strlen(before);
-		p_tmp = output;
-		p_buf = buf;
+	char *dup = pstrdup(buf);	// copy buf, and malloc
+	char *ptr1, *ptr2;
 
-elog(DEBUG3, "* buf   : %s\n", buf);
-elog(DEBUG3, "* before: %s\n", before);
-elog(DEBUG3, "* after : %s\n", after);
+	int dup_len = strlen(dup);
+	int before_len = strlen(before);
+	int after_len = strlen(after);
 
-		while((p_search = strstr(p_buf, before)) != NULL) {
+	ptr1 = dup;
+	while ((ptr2 = strstr(ptr1, before)) != NULL)
+	{
+		strncpy(buf, ptr1, ptr2 - ptr1);
+		buf += (ptr2 - ptr1);
 
-				//検索できた箇所の1つ前までコピー
-				while( p_buf < p_search ) {
-					*p_tmp++ = *p_buf++;
-				}
+		strncpy(buf, after, after_len);
+		buf += after_len;
 
-				//新文字列をコピー
-				p_after = after;
-				while( *p_after != '\0'){
-					*p_tmp++ = *p_after++;
-				}
+		ptr1 = ptr2 + before_len;
+	}
+	strncpy(buf, ptr1, dup + dup_len - ptr1);
+	buf += (dup + dup_len - ptr1);
+	strcpy(buf, "\0");
 
-				//旧文字列はスキップ
-				p_buf += len_before;
-		}
-
-		//残りの処理
-		while(*p_buf != '\0') {
-				*p_tmp++ = *p_buf++;
-		}
-		*p_tmp = '\0';
-
-elog(DEBUG3, "* output: %s\n", output);
-
+	pfree(dup);
 }
 
 /* Create connstr from env */
