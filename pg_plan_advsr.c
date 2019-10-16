@@ -28,11 +28,18 @@
 #include "utils/ruleutils.h"
 
 #include "access/hash.h"
+#include "utils/lsyscache.h"
+#include "catalog/namespace.h"
+#include "utils/builtins.h"
+#include "access/htup_details.h"
+#include "catalog/indexing.h"
+#include "access/xact.h"
+#include "utils/varlena.h"
+#include "catalog/pg_extension.h"
+#include "utils/fmgroids.h"
 
 #include "libpq-int.h"
-/*
-#include "guc.h"
-*/
+
 /* came from pg_hint_plan REL10_1_3_2 */
 #include "normalize_query.h"
 
@@ -77,12 +84,6 @@ static int rows_cnt;
 char *normalized_query;
 /* Current nesting depth of ExecutorRun+ProcessUtility calls */
 static int	nested_level = 0;
-
-/* Connect String */
-/*
-static const char *connstr = "host=127.0.0.1 port=5151 dbname=postgres";
-*/
-static StringInfo connstr;
 
 /* GUC variables */
 /* enabling / disabling pg_plan_advsr during EXPLAIN ANALYZE */
@@ -141,20 +142,16 @@ bool CreateLeadingHint(PlanState *planstate, LeadingContext *lead);
 
 void store_info_to_tables(double totaltime, const char *sourcetext); /* store query, hints and diff to tables */
 
-void get_rows_hint_from_table(const char *conninfo,
-							  const char *norm_query_str,
-							  StringInfo prev_rows_hint,
-							  char *aplname);
-
 /* these functions based on explain.c */
 bool ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used);
 
 bool pg_plan_advsr_planstate_tree_walker(PlanState *planstate,
-										 bool (*walker) (),
-										 void *context);
+					 bool (*walker) (),
+					 void *context);
 bool pg_plan_advsr_planstate_walk_subplans(List *plans,
-										   bool (*walker) (),
-										   void *context);
+					   bool (*walker) (),
+					   void *context);
+
 bool pg_plan_advsr_planstate_walk_members(List *plans, 
 										  PlanState **planstates,
 										  bool (*walker) (),
@@ -174,70 +171,426 @@ uint32 create_pgsp_planid(QueryDesc *queryDesc);
 /* came from pg_store_plans.c */
 static uint32 hash_query(const char* query);
 
-/* Create connstr and Execute query */
-void get_connstr(StringInfo str);
-bool execSQL(const char *conninfo, const char *sql, int nParams, const char **params);
-bool execSQL_simple(const char *conninfo, const char *sql);
-
 /* replace all before strings to after strings in buf strings */
 void replaceAll(char *buf, const char *before, const char *after);
 
-/* SQL */
-/* This is for pg_plan_advsr.feedback option */
-#define FEEDBACK_OPTION_SQL "\
-set pg_plan_advsr.enabled to on; \
-set pg_hint_plan.debug_print to on; \
-set pg_hint_plan.enable_hint_table to on; "
 
-/* For inserting hints, plans and query to tables */
-#define INSERT_PLAN_HISTORY_SQL "\
-insert into plan_repo.plan_history (\
-norm_query_hash, \
-pgsp_queryid, \
-pgsp_planid, \
-execution_time, \
-rows_hint, \
-scan_hint, \
-join_hint, \
-lead_hint, \
-diff_of_joins, \
-join_cnt, \
-application_name, \
-timestamp) \
-values ('%s', '%u', '%u', %0.3f, '%s', '%s', '%s', '%s', %.0f, '%d', '%s', current_timestamp)"
+/* plan_repo.plan_history */
+#define Natts_plan_history			13
+#define Anum_plan_history_id			1	/* serial */
+#define Anum_plan_history_norm_query_hash	2	/* text */
+#define Anum_plan_history_pgsp_queryid		3	/* bigint */
+#define Anum_plan_history_pgsp_planid		4	/* bigint */
+#define Anum_plan_history_execution_time	5	/* double precision */
+#define Anum_plan_history_rows_hint		6	/* text */
+#define Anum_plan_history_scan_hint		7	/* text */
+#define Anum_plan_history_join_hint		8	/* text */
+#define Anum_plan_history_lead_hint		9	/* text */
+#define Anum_plan_history_diff_of_joins		10	/* double precision */
+#define Anum_plan_history_join_cnt		11	/* int */
+#define Anum_plan_history_application_name	12      /* text */
+#define Anum_plan_history_timestamp		13      /* timestamp */
 
-#define INSERT_NORM_QUERIES_SQL "\
-INSERT INTO plan_repo.norm_queries (\
-norm_query_hash, \
-norm_query_string) \
-VALUES ('%s', '%s')"
+/* plan_repo.norm_queries */
+#define Natts_norm_queries			2
+#define Anum_norm_queries_norm_query_hash	1	/* text */
+#define Anum_norm_queries_norm_query_string	2	/* text */
 
-#define INSERT_RAW_QUERIES_SQL "\
-INSERT INTO plan_repo.raw_queries (\
-norm_query_hash, \
-raw_query_string, \
-timestamp) \
-VALUES ('%s', '%s', current_timestamp)"
+/* plan_repo.raw_queries */
+#define Natts_raw_queries			4
+#define Anum_raw_queries_norm_query_hash	1	/* text */
+#define Anum_raw_queries_raw_query_id		2	/* serial */
+#define Anum_raw_queries_raw_query_string	3	/* text */
+#define Anum_raw_queries_timestamp		4	/* timestamp */
 
-/* For inserting rows hints to table to use it for auto tuning */
-#define SELECT_HINT_SQL "\
-select hints from hint_plan.hints \
-where norm_query_string = '%s' \
-and application_name = '%s'"
+/* hint_plan.hints */
+#define Natts_hints				4
+#define Anum_hints_id				1	/* serial */
+#define Anum_hints_norm_query_string		2	/* text */
+#define Anum_hints_application_name		3	/* text */
+#define Anum_hints_hints			4	/* text */
 
-/* Delete previous rows_hints */
-#define DELETE_ROWS_HINT_SQL "\
-delete from hint_plan.hints \
-where norm_query_string = '%s' \
-and application_name = '%s'"
+static Oid extensionOwner(void);
+static Oid resolveRelationId(text *relationName, bool missingOk);
+static uint64 getNextVal(const char *sequence);
+static bool insertPlanHistory(const char *norm_query_hash, const uint32 pgsp_queryid, const uint32 pgsp_planid,
+			      const double execution_time, const char *rows_hint, const char *scan_hint,
+			      const char *join_hint, const char *lead_hint, const double diff_of_joins,
+			      const int join_cnt, char *application_name);
+static bool insertNormQueries(const char *norm_query_hash, const char *norm_query_string);
+static bool insertRawQueries(const char *raw_query_hash, const char *raw_query_string);
+static void selectHints(const char *norm_query_string, const char *application_name, StringInfo prev_rows_hint);
+static bool deleteHints(const char *norm_query_string, const char *application_name);
+static bool insertHints(const char *norm_query_string, const char *application_name, const char *hints);
 
-/* Insert new rows_hint */
-#define INSERT_NEW_ROWS_HINT_SQL "\
-insert into hint_plan.hints (\
-norm_query_string, \
-hints, \
-application_name) \
-values ('%s', '%s', '%s')"
+/*
+ * Return pg_plan_advsr owner's Oid.
+ */
+static Oid
+extensionOwner(void)
+{
+  Relation relation = NULL;
+  SysScanDesc scandesc;
+  ScanKeyData entry[1];
+  HeapTuple extensionTuple = NULL;
+  Form_pg_extension extensionForm = NULL;
+  Oid extensionOwner;
+
+  relation = heap_open(ExtensionRelationId, AccessShareLock);
+
+  ScanKeyInit(&entry[0], Anum_pg_extension_extname,
+	      BTEqualStrategyNumber, F_NAMEEQ,
+	      CStringGetDatum("pg_plan_advsr"));
+
+  scandesc = systable_beginscan(relation, ExtensionNameIndexId, true,
+				NULL, 1, entry);
+
+  extensionTuple = systable_getnext(scandesc);
+  if (HeapTupleIsValid(extensionTuple))
+    {
+      extensionForm = (Form_pg_extension) GETSTRUCT(extensionTuple);
+      if (!superuser_arg(extensionForm->extowner))
+	ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+			errmsg("pg_plan_advsr extension needs to be owned by superuser")));
+      extensionOwner = extensionForm->extowner;
+      Assert(OidIsValid(extensionOwner));
+    }
+  else
+      ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+		      errmsg("pg_plan_advsr extension not loaded")));
+
+  systable_endscan(scandesc);
+  heap_close(relation, AccessShareLock);
+
+  return extensionOwner;
+}
+
+/*
+ * Return relationname's Oid
+ */
+static Oid
+resolveRelationId(text *relationName, bool missingOk)
+{
+  List *relationNameList = NIL;
+  RangeVar *relation = NULL;
+  Oid relationId = InvalidOid;
+
+  relationNameList = textToQualifiedNameList(relationName);
+  relation = makeRangeVarFromNameList(relationNameList);
+  relationId = RangeVarGetRelid(relation, NoLock, missingOk);
+
+  return relationId;
+}
+
+/*
+ * Get nextVal of the specified sequence
+ */
+static uint64
+getNextVal(const char *sequence)
+{
+  Oid sequenceId = InvalidOid;
+  Datum sequenceIdDatum = 0;
+  Oid savedUserId = InvalidOid;
+  int savedSecurityContext = 0;
+  Datum nextValDatum = 0;
+
+  sequenceId = resolveRelationId(cstring_to_text(sequence), false);
+  sequenceIdDatum = ObjectIdGetDatum(sequenceId);
+  GetUserIdAndSecContext(&savedUserId, &savedSecurityContext);
+  SetUserIdAndSecContext(extensionOwner(), SECURITY_LOCAL_USERID_CHANGE);
+  nextValDatum = DirectFunctionCall1(nextval_oid, sequenceIdDatum);
+  SetUserIdAndSecContext(savedUserId, savedSecurityContext);
+
+  return DatumGetInt64(nextValDatum);
+}
+
+/*
+ * Insert a row into plan_repo.plan_history table.
+ */
+static bool
+insertPlanHistory(const char *norm_query_hash, const uint32 pgsp_queryid, const uint32 pgsp_planid,
+		  const double execution_time, const char *rows_hint, const char *scan_hint,
+		  const char *join_hint, const char *lead_hint, const double diff_of_joins,
+		  const int join_cnt, char *application_name)
+{
+  Relation rel = NULL;
+  TupleDesc tupleDescriptor = NULL;
+  HeapTuple heapTuple = NULL;
+  Datum values[Natts_plan_history];
+  bool isNulls[Natts_plan_history];
+
+  Oid relationId = get_relname_relid("plan_history", LookupExplicitNamespace("plan_repo", true));
+
+  if (relationId == InvalidOid)
+    return false;
+
+  /* form new shard tuple */
+  memset(values, 0, sizeof(values));
+  memset(isNulls, false, sizeof(isNulls));
+
+  values[Anum_plan_history_id - 1] = Int64GetDatum(getNextVal("plan_repo.plan_history_id_seq"));
+  isNulls[Anum_plan_history_id - 1] = false;
+
+  values[Anum_plan_history_norm_query_hash - 1] = CStringGetTextDatum(norm_query_hash);
+  isNulls[Anum_plan_history_norm_query_hash - 1] = (norm_query_hash == NULL) ? true : false;
+  values[Anum_plan_history_pgsp_queryid - 1] = Int32GetDatum(pgsp_queryid);
+  isNulls[Anum_plan_history_pgsp_queryid - 1] = false;
+  values[Anum_plan_history_pgsp_planid - 1] = Int32GetDatum(pgsp_planid);
+  isNulls[Anum_plan_history_pgsp_planid - 1] = false;
+  values[Anum_plan_history_execution_time - 1] = Float8GetDatum(execution_time);
+  isNulls[Anum_plan_history_execution_time - 1] = false;
+  values[Anum_plan_history_rows_hint - 1] = CStringGetTextDatum(rows_hint);
+  isNulls[Anum_plan_history_rows_hint - 1] = (rows_hint == NULL) ? true : false;
+  values[Anum_plan_history_scan_hint - 1] = CStringGetTextDatum(scan_hint);
+  isNulls[Anum_plan_history_scan_hint - 1] = (scan_hint == NULL) ? true : false;
+  values[Anum_plan_history_join_hint - 1] = CStringGetTextDatum(join_hint);
+  isNulls[Anum_plan_history_join_hint - 1] = (join_hint == NULL) ? true : false;
+  values[Anum_plan_history_lead_hint - 1] = CStringGetTextDatum(lead_hint);
+  isNulls[Anum_plan_history_lead_hint - 1] = (lead_hint == NULL) ? true : false;
+
+  values[Anum_plan_history_diff_of_joins - 1] = Float8GetDatum(diff_of_joins);
+  isNulls[Anum_plan_history_diff_of_joins - 1] = false;
+  values[Anum_plan_history_join_cnt - 1] = Int32GetDatum(join_cnt);
+  isNulls[Anum_plan_history_join_cnt - 1] = false;
+  values[Anum_plan_history_application_name - 1] = CStringGetTextDatum(application_name);
+  isNulls[Anum_plan_history_application_name - 1] = (application_name == NULL) ? true : false;
+  values[Anum_plan_history_timestamp - 1] = TimestampGetDatum(GetCurrentTimestamp());
+  isNulls[Anum_plan_history_timestamp - 1] = false;
+
+  rel = heap_open(relationId, RowExclusiveLock);
+  if (rel == NULL)
+    return false;
+  tupleDescriptor = RelationGetDescr(rel);
+  heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
+  CatalogTupleInsert(rel, heapTuple);
+  CommandCounterIncrement();
+  heap_close(rel, NoLock);
+
+  return true;
+}
+
+/*
+ * Insert a row into plan_repo.norm_queries table.
+ */
+static bool
+insertNormQueries(const char *norm_query_hash, const char *norm_query_string)
+{
+  Relation rel = NULL;
+  TupleDesc tupleDescriptor = NULL;
+  HeapTuple heapTuple = NULL;
+  Datum values[Natts_norm_queries];
+  bool isNulls[Natts_norm_queries];
+  Oid relationId = get_relname_relid("norm_queries", LookupExplicitNamespace("plan_repo", true));
+
+  if (relationId == InvalidOid)
+    return false;
+
+  /* form new shard tuple */
+  memset(values, 0, sizeof(values));
+  memset(isNulls, false, sizeof(isNulls));
+
+  values[Anum_norm_queries_norm_query_hash - 1] = CStringGetTextDatum(norm_query_hash);
+  isNulls[Anum_norm_queries_norm_query_hash - 1] = (norm_query_hash == NULL) ? true : false;
+  values[Anum_norm_queries_norm_query_string - 1] = CStringGetTextDatum(norm_query_string);
+  isNulls[Anum_norm_queries_norm_query_string - 1] = (norm_query_string == NULL) ? true : false;
+
+  rel = heap_open(relationId, RowExclusiveLock);
+  if (rel == NULL)
+    return false;
+  tupleDescriptor = RelationGetDescr(rel);
+  heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
+  CatalogTupleInsert(rel, heapTuple);
+  CommandCounterIncrement();
+  heap_close(rel, NoLock);
+
+  return true;
+}
+
+/*
+ * Insert a row into plan_repo.raw_queries table.
+ */
+static bool
+insertRawQueries(const char *raw_query_hash, const char *raw_query_string)
+{
+  Relation rel = NULL;
+  TupleDesc tupleDescriptor = NULL;
+  HeapTuple heapTuple = NULL;
+  Datum values[Natts_raw_queries];
+  bool isNulls[Natts_raw_queries];
+
+  Oid relationId = get_relname_relid("raw_queries", LookupExplicitNamespace("plan_repo", true));
+
+  if (relationId == InvalidOid)
+    return false;
+
+  /* form new shard tuple */
+  memset(values, 0, sizeof(values));
+  memset(isNulls, false, sizeof(isNulls));
+
+  values[Anum_raw_queries_norm_query_hash - 1] = CStringGetTextDatum(raw_query_hash);
+  isNulls[Anum_raw_queries_norm_query_hash - 1] = (raw_query_hash == NULL) ? true : false;
+  values[Anum_raw_queries_raw_query_id - 1] = Int64GetDatum(getNextVal("plan_repo.raw_queries_raw_query_id_seq"));
+  isNulls[Anum_raw_queries_raw_query_id - 1] = false;
+  values[Anum_raw_queries_raw_query_string - 1] = CStringGetTextDatum(raw_query_string);
+  isNulls[Anum_raw_queries_raw_query_string - 1] = (raw_query_string == NULL) ? true : false;
+  values[Anum_raw_queries_timestamp - 1] = TimestampGetDatum(GetCurrentTimestamp());
+  isNulls[Anum_raw_queries_timestamp - 1] = false;
+
+  rel = heap_open(relationId, RowExclusiveLock);
+  if (rel == NULL)
+    return false;
+  tupleDescriptor = RelationGetDescr(rel);
+  heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
+  CatalogTupleInsert(rel, heapTuple);
+  CommandCounterIncrement();
+  heap_close(rel, NoLock);
+
+  return true;
+}
+
+/*
+ * Fetch rows from hint_plan.hints table and append the rows to prev_rows_hint.
+ */
+static void
+selectHints(const char *norm_query_string, const char *application_name, StringInfo prev_rows_hint)
+{
+  Relation rel = NULL;
+  Oid relationId = get_relname_relid("hints",
+				     LookupExplicitNamespace("hint_plan", true));
+
+  ScanKeyData scanKey[2];
+  SysScanDesc scanDescriptor = NULL;
+
+  int scanKeyCount = 2;
+  bool indexOK = true;
+  HeapTuple heapTuple = NULL;
+
+  if (relationId == InvalidOid)
+    return;
+
+  rel = heap_open(relationId, AccessShareLock);
+  if (rel == NULL)
+    return;
+
+  ScanKeyInit(&scanKey[0], Anum_hints_norm_query_string,
+	      BTEqualStrategyNumber, F_TEXTEQ, CStringGetTextDatum(norm_query_string));
+
+  ScanKeyInit(&scanKey[1], Anum_hints_application_name,
+	      BTEqualStrategyNumber, F_TEXTEQ, CStringGetTextDatum(application_name));
+  scanDescriptor = systable_beginscan(rel,
+				      get_relname_relid("hints_norm_and_app",
+							LookupExplicitNamespace("hint_plan", true)),
+				      indexOK, NULL, scanKeyCount, scanKey);
+  heapTuple = systable_getnext(scanDescriptor);
+  while (HeapTupleIsValid(heapTuple))
+    {
+      TupleDesc tupleDescriptor = RelationGetDescr(rel);
+      bool isNullArray[Natts_hints];
+      Datum datumArray[Natts_hints];
+
+      heap_deform_tuple(heapTuple, tupleDescriptor, datumArray, isNullArray);
+      if (!isNullArray[Anum_hints_hints - 1])
+	  appendStringInfo(prev_rows_hint, "%s", TextDatumGetCString(datumArray[Anum_hints_hints - 1]));
+      heapTuple = systable_getnext(scanDescriptor);
+    }
+
+  systable_endscan(scanDescriptor);
+  heap_close(rel, NoLock);
+
+}
+
+/*
+ * Delete a row from hint_plan.hints
+ */
+static bool
+deleteHints(const char *norm_query_string, const char *application_name)
+{
+  bool ret = false;
+  Relation rel = NULL;
+  Oid relationId = get_relname_relid("hints",
+				     LookupExplicitNamespace("hint_plan", true));
+
+  ScanKeyData scanKey[2];
+  SysScanDesc scanDescriptor = NULL;
+
+  int scanKeyCount = 2;
+  bool indexOK = true;
+  HeapTuple heapTuple = NULL;
+
+  if (relationId == InvalidOid)
+    return false;
+
+  rel = heap_open(relationId, AccessShareLock);
+  if (rel == NULL)
+    return false;
+
+  ScanKeyInit(&scanKey[0], Anum_hints_norm_query_string,
+	      BTEqualStrategyNumber, F_TEXTEQ, CStringGetTextDatum(norm_query_string));
+  ScanKeyInit(&scanKey[1], Anum_hints_application_name,
+	      BTEqualStrategyNumber, F_TEXTEQ, CStringGetTextDatum(application_name));
+  scanDescriptor = systable_beginscan(rel,
+				      get_relname_relid("hints_norm_and_app",
+							LookupExplicitNamespace("hint_plan", true)),
+				      indexOK, NULL, scanKeyCount, scanKey);
+  heapTuple = systable_getnext(scanDescriptor);
+  while (HeapTupleIsValid(heapTuple))
+    {
+      TupleDesc tupleDescriptor = RelationGetDescr(rel);
+      bool isNullArray[Natts_hints];
+      Datum datumArray[Natts_hints];
+
+      heap_deform_tuple(heapTuple, tupleDescriptor, datumArray, isNullArray);
+      CatalogTupleDelete(rel, &heapTuple->t_self);
+      CommandCounterIncrement();
+      heapTuple = systable_getnext(scanDescriptor);
+    }
+
+  systable_endscan(scanDescriptor);
+  heap_close(rel, NoLock);
+
+  return ret;
+}
+
+/*
+ * Insert a row into hint_plan.hints table.
+ */
+static bool
+insertHints(const char *norm_query_string, const char *application_name, const char *hints)
+{
+  Relation rel = NULL;
+  TupleDesc tupleDescriptor = NULL;
+  HeapTuple heapTuple = NULL;
+  Datum values[Natts_hints];
+  bool isNulls[Natts_hints];
+  Oid relationId = get_relname_relid("hints", LookupExplicitNamespace("hint_plan", true));
+
+  if (relationId == InvalidOid)
+    return false;
+
+  /* form new shard tuple */
+  memset(values, 0, sizeof(values));
+  memset(isNulls, false, sizeof(isNulls));
+
+  values[Anum_hints_id - 1] = Int64GetDatum(getNextVal("hint_plan.hints_id_seq"));
+  isNulls[Anum_hints_id - 1] = false;
+  values[Anum_hints_norm_query_string - 1] = CStringGetTextDatum(norm_query_string);
+  isNulls[Anum_hints_norm_query_string - 1] = (norm_query_string == NULL) ? true : false;
+  values[Anum_hints_application_name - 1] = CStringGetTextDatum(application_name);
+  isNulls[Anum_hints_application_name - 1] = (application_name == NULL) ? true : false;
+  values[Anum_hints_hints - 1] = CStringGetTextDatum(hints);
+  isNulls[Anum_hints_hints - 1] = (hints == NULL) ? true : false;
+
+  rel = heap_open(relationId, RowExclusiveLock);
+  if (rel == NULL)
+    return false;
+  tupleDescriptor = RelationGetDescr(rel);
+  heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
+  CatalogTupleInsert(rel, heapTuple);
+  CommandCounterIncrement();
+  heap_close(rel, NoLock);
+
+  return true;
+}
 
 
 /* Install hooks */
@@ -1164,54 +1517,25 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 				errmsg("pg_md5_hash: out of memory")));
 	}
 
-	/* get connect string */
-	connstr = makeStringInfo();
-	get_connstr(connstr);
-	elog(DEBUG3, "connstr->data: %s", connstr->data);
-
 	/* get application_name */
 	aplname = GetConfigOptionByName("application_name", NULL, false);
 	if ( ! pg_plan_advsr_is_quieted )
 		elog(INFO, "---- Application name-------------\n\t\t%s", aplname);
 
 	/* insert totaltime and hints to plan_repo.plan_history */
-	sql = makeStringInfo();
-	if (!rows_str->data)
-		rows_str->data = "";
-	appendStringInfo(sql, INSERT_PLAN_HISTORY_SQL,
-									md5,
-									pgsp_queryid,
-									pgsp_planid,
-									totaltime,
-									rows_str->data,
-									scan_str->data,
-									join_str->data,
-									leadcxt->lead_str->data,
-									total_diff_rows, /* diff of joins */
-									join_cnt,
-									aplname);
-	elog(DEBUG3, "#plan_repo.plan_history sql: \n%s", sql->data);
-
-	if(!execSQL_simple(connstr->data, sql->data))
-		elog(INFO, "\ninsert error: plan_history\n");
+	if (insertPlanHistory(md5, pgsp_queryid, pgsp_planid, totaltime,
+			      rows_str->data, scan_str->data, join_str->data,
+			      leadcxt->lead_str->data, total_diff_rows /* diff of joins */,
+			      join_cnt, aplname))
+	  elog(DEBUG3, "\ninsert success: plan_history\n");
 	else
-	{
-		elog(DEBUG3, "\ninsert success: plan_history\n");
-	}
+	  elog(INFO, "\ninsert error: plan_history\n");
 
 	/* insert queryhash and normalized query text to plan_repo.norm_queries */
-	sql = makeStringInfo();
-	appendStringInfo(sql, INSERT_NORM_QUERIES_SQL,
-									md5,
-									normalized_query);
-
-	elog(DEBUG3, "#plan_repo.norm_queries sql: \n%s", sql->data);
-	if(!execSQL_simple(connstr->data, sql->data))
-		elog(INFO, "\ninsert error: norm_queries\n");
+	if (insertNormQueries(md5, normalized_query))
+	  elog(DEBUG3, "\ninsert success: norm_queries\n");
 	else
-	{
-		elog(DEBUG3, "\ninsert success: norm_queries\n");
-	}
+	  elog(INFO, "\ninsert error: norm_queries\n");
 
 	/* insert queryhash and raw query text to plan_repo.raw_queries */
 	/* should be replaced "'" to "''" in sql */
@@ -1221,18 +1545,10 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 	replaceAll(output, before, after);
 	elog(DEBUG3, "output(after): %s", output);
 
-	sql = makeStringInfo();
-	appendStringInfo(sql, INSERT_RAW_QUERIES_SQL,
-									md5,
-									output);
-
-	elog(DEBUG3, "#plan_repo.raw_queries sql: \n%s", sql->data);
-	if(!execSQL_simple(connstr->data, sql->data))
-		elog(INFO, "\ninsert error: raw_queries\n");
+	if (insertRawQueries(md5, output))
+	  elog(DEBUG3, "\ninsert success: raw_queries\n");
 	else
-	{
-		elog(DEBUG3, "\ninsert success: raw_queries\n");
-	}
+	  elog(INFO, "\ninsert error: raw_queries\n");
 	pfree(output);
 
 	/* upsert hints to hint_plan.hints */
@@ -1241,39 +1557,30 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 	prev_rows_hint = makeStringInfo();
 	new_hint = makeStringInfo();
 
-	/* get previous rows_hint from table */
-	get_rows_hint_from_table(connstr->data, normalized_query, prev_rows_hint, aplname);
+	selectHints(normalized_query, aplname, prev_rows_hint);
 	
 	if (prev_rows_hint)
-	{
-		/* delete previous rows_hint */
-		appendStringInfo(del_sql, DELETE_ROWS_HINT_SQL, normalized_query, aplname);
-		if(!execSQL_simple(connstr->data, del_sql->data))
-			elog(INFO, "\ndelete error: hint_plan.hints\n");
-		else
-		{
-			elog(DEBUG3, "\ndelete success: hint_plan.hints\n");
-		}
-		/* create new rows_hint */
-		appendStringInfo(new_hint, "%s %s", prev_rows_hint->data, rows_str->data);
-	}
+	  {
+	    /* delete previous rows_hint */
+	    if (deleteHints(normalized_query, aplname))
+	      elog(DEBUG3, "\ndelete success: hint_plan.hints\n");
+	    else
+	      elog(INFO, "\ndelete error: hint_plan.hints\n");
+
+	    /* create new rows_hint */
+	    appendStringInfo(new_hint, "%s %s", prev_rows_hint->data, rows_str->data);
+	  }
 	else
-	{
-		appendStringInfo(new_hint, "%s", rows_str->data);
-	}
+	  {
+	    appendStringInfo(new_hint, "%s", rows_str->data);
+	  }
 
 	/* insert new rows_hint to table for auto tune */
-	appendStringInfo(sql, INSERT_NEW_ROWS_HINT_SQL, normalized_query, new_hint->data, aplname);
-	if(!execSQL_simple(connstr->data, sql->data))
-		elog(INFO, "\ninsert error: hint_plan.hints\n");
+	if (insertHints(normalized_query, aplname, new_hint->data))
+	  elog(DEBUG3, "\ninsert success: hint_plan.hints\n");
 	else
-	{
-		elog(DEBUG3, "\ninsert success: hint_plan.hints\n");
-	}
-	
+	  elog(INFO, "\ninsert error: hint_plan.hints\n");
 }
-
-
 
 
 /*
@@ -1687,131 +1994,6 @@ elog(DEBUG1, "    # pg_plan_advsr_ExplainTargetRel #");
 	}
 }
 
-/*
- * Insert plans, queries and hints to tables using PQexecParams
- */
-/*
-bool
-execSQL(const char *conninfo, const char *sql, int nParams, const char **params)
-{
-	PGconn		*con;
-	PGresult 	*res;
-
-	if ((con = PQconnectdb(conninfo)) == NULL)
-	{
-		ereport(LOG,
-				(errmsg("could not establish conenction to server: \"%s\"",
-					conninfo)));
-
-		PQfinish(con);
-		return false;
-	}
-
-	res = PQexecParams(conninfo, sql, nParams, NULL, params, NULL, NULL, 0);
-
-	switch (PQresultStatus(res))
-	{
-		case PGRES_TUPLES_OK:
-		case PGRES_COMMAND_OK:
-			break;
-		default:
-			ereport(LOG,
-					(errmsg("query failed: \"%s\"", sql)));
-			break;
-	}
-
-	PQfinish(con);
-	return true;
-}
-*/
-
-/*
- * Insert plans, queries and hints to tables using PQexec
- */
-bool
-execSQL_simple(const char *conninfo, const char *sql)
-{
-	PGconn		*con;
-	PGresult 	*res;
-
-	/* Try to connect to primary server */
-	if ((con = PQconnectdb(conninfo)) == NULL)
-	{
-		ereport(LOG,
-				(errmsg("could not establish conenction to server: \"%s\"",
-					conninfo)));
-
-		PQfinish(con);
-		return false;
-	}
-
-	res = PQexec(con, sql);
-
-	switch (PQresultStatus(res))
-	{
-		case PGRES_TUPLES_OK:
-		case PGRES_COMMAND_OK:
-			break;
-		default:
-			ereport(LOG,
-					(errmsg("query failed: \"%s\"", sql)));
-			PQfinish(con);
-			return false;
-	}
-
-	PQfinish(con);
-	return true;
-}
-
-/* 
- * get rows_hint from hint_plan.hints table
- */
-void get_rows_hint_from_table(const char *conninfo, const char *norm_query_str, StringInfo prev_rows_hint, char *aplname)
-{
-	PGconn    *con;
-	PGresult  *res;
-	int        hint_fnum;
-	char      *hint;
-	StringInfo sql = makeStringInfo();
-	hint = NULL;
-
-	/* Try to connect to primary server */
-	if ((con = PQconnectdb(conninfo)) == NULL)
-	{
-		ereport(LOG,
-				(errmsg("could not establish conenction to server: \"%s\"",
-					conninfo)));
-
-		PQfinish(con);
-		return;
-	}
-
-	appendStringInfo(sql, SELECT_HINT_SQL, norm_query_str, aplname); 
-	res = PQexec(con, sql->data);
-
-	switch (PQresultStatus(res))
-	{
-		case PGRES_TUPLES_OK:
-		case PGRES_COMMAND_OK:
-elog(DEBUG3, "res->ntups: %d", res->ntups);
-elog(DEBUG3, "res->numAttributes: %d", res->numAttributes);
-			hint_fnum = PQfnumber(res, "hints");
-			hint = PQgetvalue(res, 0, hint_fnum);
-elog(DEBUG3, "prev_rows_hint: %s", hint);
-			if (hint)
-				appendStringInfo(prev_rows_hint, "%s", hint);
-			
-			PQclear(res);
-			PQfinish(con);
-			break;
-		default:
-			ereport(LOG,
-					(errmsg("query failed: \"%s\"", sql->data)));
-			if(res)
-				PQclear(res);
-			PQfinish(con);
-	}
-}
 
 /*
  * Replace all before strings to after strings in buf strings.
@@ -1844,40 +2026,6 @@ void replaceAll(char *buf, const char *before, const char *after)
 	pfree(dup);
 }
 
-/* Create connstr from env */
-void get_connstr(StringInfo str)
-{
-	char *env;
-	char *pghost = "";
-	char *pgport = "";
-	char *login = NULL;
-	char *dbName;
-
-	if ((env = getenv("PGHOST")) != NULL && *env != '\0')
-		pghost = env;
-	else
-		pghost = "127.0.0.1";
-
-	if ((env = getenv("PGPORT")) != NULL && *env != '\0')
-		pgport = env;
-	else
-		pgport = "5432";
-
-	if ((env = getenv("PGUSER")) != NULL && *env != '\0')
-		login = env;
-	else
-		login = "postgres";
-
-	if ((env = getenv("PGDATABASE")) != NULL && *env != '\0')
-		dbName = env;
-	else
-		dbName = "postgres";
-
-	/*
-		*connstr = "host=127.0.0.1 port=5151 dbname=postgres";
-	*/
-	appendStringInfo(str, "host=%s port=%s dbname=%s user=%s", pghost, pgport, dbName, login);
-}
 
 #include "pg_stat_statements.c"
 
