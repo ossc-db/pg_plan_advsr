@@ -289,60 +289,73 @@ pg_plan_advsr uses pg_hint_plan and pg_store_plans cooperatively.
 
 TBA
 
-- Prerequisite for installation
-	- Install postgresql-devel package if you installed PostgreSQL by rpm files
-	- Set the PATH environment variable to pg_config of your PostgreSQL
-	- Set these environment variables PGHOST, PGPORT, PGDATABASE and PGUSER since this extension uses them as a connection string. If you didn't set the variables, the connection string is set "host=127.0.0.1 port=5432 dbname=postgres user=postgres" as a default.
-	
-Operations
-	
-	$ wget https://github.com/ossc-db/pg_hint_plan/archive/REL10_1_3_2.tar.gz
-	$ wget https://github.com/ossc-db/pg_store_plans/archive/1.3.tar.gz
-	$ git clone https://github.com/ossc-db/pg_plan_advsr.git pg_plan_advsr
-	
-	$ tar xvzf REL10_1_3_2.tar.gz
-	$ tar xvzf 1.3.tar.gz
-	
-	$ cp pg_hint_plan-REL10_1_3_2/pg_stat_statements.c pg_plan_advsr/
-	$ cp pg_hint_plan-REL10_1_3_2/normalize_query.h pg_plan_advsr/
-	$ cp pg_store_plans-1.3/pgsp_json*.[ch] pg_plan_advsr/
-	
-	$ cd pg_hint_plan-REL10_1_3_2
-	$ make && make install
-	
-	$ cd ../pg_store_plans-1.3
-	$ make USE_PGXS=1 all install
-	
-	$ cd ../pg_plan_advsr
-	$ make && make install 
-	
-	$ vi $PGDATA/postgresql.conf
-	
-	---- Add this line ----
-	shared_preload_libraries = 'pg_hint_plan, pg_plan_advsr, pg_store_plans'
-	max_parallel_workers_per_gather = 0
-	max_parallel_workers = 0
-	----------------------
-	
-	---- Consider increase these numbers (optional, these are based on your query) ----
-	geqo_threshold = 12 -> XX
-	from_collapse_limit = 8 -> YY
-	join_collapse_limit = 8 -> ZZ
-	-----------------------------------------------------------------------------------
+There are two methods of how to install: Using Dockerfile or building pg_plan_advsr manually.
 
-	---- Consider decrease the number (optional, it is based on your storage) ----
-	random_page_cost = 4 -> 2 (example)
-	------------------------------------------------------------------------------
+- Dockerfile (experimental)
 
-	$ pg_ctl start
-	$ psql 
-	# create extension pg_hint_plan;
-	# create extension pg_store_plans;
-	# create extension pg_plan_advsr;
+	
+	\# cd pg_plan_advsr/docker
+	\# ./build.sh
+	
+
+	See: build.sh and Dockerfile
+
+- Build and install (make && make install)
+
+	- Prerequisite for installation
+		- Install postgresql-devel package if you installed PostgreSQL by rpm files
+		- Set the PATH environment variable to pg_config of your PostgreSQL
+		- Set these environment variables PGHOST, PGPORT, PGDATABASE and PGUSER since this extension uses them as a connection string. If you didn't set the variables, the connection string is set "host=127.0.0.1 port=5432 dbname=postgres user=postgres" as a default.
+	
+	Operations
+	
+		$ wget https://github.com/ossc-db/pg_hint_plan/archive/REL10_1_3_2.tar.gz
+		$ wget https://github.com/ossc-db/pg_store_plans/archive/1.3.tar.gz
+		$ git clone https://github.com/ossc-db/pg_plan_advsr.git pg_plan_advsr
+
+		$ tar xvzf REL10_1_3_2.tar.gz
+		$ tar xvzf 1.3.tar.gz
+
+		$ cp pg_hint_plan-REL10_1_3_2/pg_stat_statements.c pg_plan_advsr/
+		$ cp pg_hint_plan-REL10_1_3_2/normalize_query.h pg_plan_advsr/
+		$ cp pg_store_plans-1.3/pgsp_json*.[ch] pg_plan_advsr/
+
+		$ cd pg_hint_plan-REL10_1_3_2
+		$ make && make install
+
+		$ cd ../pg_store_plans-1.3
+		$ make USE_PGXS=1 all install
+
+		$ cd ../pg_plan_advsr
+		$ make && make install 
+
+		$ vi $PGDATA/postgresql.conf
+
+		---- Add this line ----
+		shared_preload_libraries = 'pg_hint_plan, pg_plan_advsr, pg_store_plans'
+		max_parallel_workers_per_gather = 0
+		max_parallel_workers = 0
+		----------------------
+
+		---- Consider increase these numbers (optional, these are based on your query) ----
+		geqo_threshold = 12 -> XX
+		from_collapse_limit = 8 -> YY
+		join_collapse_limit = 8 -> ZZ
+		-----------------------------------------------------------------------------------
+
+		---- Consider decrease the number (optional, it is based on your storage) ----
+		random_page_cost = 4 -> 2 (example)
+		------------------------------------------------------------------------------
+
+		$ pg_ctl start
+		$ psql 
+		# create extension pg_hint_plan;
+		# create extension pg_store_plans;
+		# create extension pg_plan_advsr;
 
 
-* You can try this extension with Join Order Benchmark as a example.
-See: [how_to_setup.md in JOB directory](https://github.com/ossc-db/pg_plan_advsr/blob/master/JOB/how_to_setup.md)
+	* You can try this extension with Join Order Benchmark as a example.
+	See: [how_to_setup.md in JOB directory](https://github.com/ossc-db/pg_plan_advsr/blob/master/JOB/how_to_setup.md)
 
 
 7 Internals
