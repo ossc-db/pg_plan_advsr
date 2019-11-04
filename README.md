@@ -113,9 +113,9 @@ The topmost join method is changed from Hash Join to Nested loop. The execution 
 	(14 rows)
 	
 
-Finally, you can see plan changes and execution time changes to check plan_repo.plan_history table and pg_store_plans view, if you want. 
+Finally, you can see plan changes and execution time changes to check plan_repo.plan_history table and pg_store_plans view, if you want. Of course, you can bring the execution plan from the verification environment to other environments because this extension use optimizer hint internally and it is just strings (text).
 
-See: [Usage](#4-usage)
+See: [Usage](#4-usage) for more details.
 
 
 
@@ -229,6 +229,9 @@ There are two types of usage.
 	  select queryid, planid, plan from pg_store_plans where queryid='your pgsp_queryid in plan_history' order by first_call;
 	  
 	See shell script file as an example: [JOB/auto_tune_31c.sh](https://github.com/ossc-db/pg_plan_advsr/blob/master/JOB/auto_tune_31c.sh)
+	
+	If you'd like to reproduce the execution plans on other environments, you'd be better to read the other.
+
 
 	Note:
 	
@@ -266,8 +269,10 @@ There are two types of usage.
 	  SEQSCAN(x) INDEXSCAN(t1) INDEXSCAN(t2)
 	  */
 	  --1101439786
-	    
+	
+	You can use the hints to reproduce the execution plan anywhere. It also can be used to modify the execution plan by changing the hints manually.
 
+	
 5 Installation Requirements
 ===========================
 
