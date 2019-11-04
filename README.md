@@ -293,11 +293,11 @@ There are two methods of how to install: Using Dockerfile or building pg_plan_ad
 
 - Dockerfile (experimental)
 
-	
-	\# cd pg_plan_advsr/docker
-	\# ./build.sh
-	
+	Operations
 
+		\# cd pg_plan_advsr/docker
+		\# ./build.sh
+	
 	See: build.sh and Dockerfile
 
 - Build and install (make && make install)
