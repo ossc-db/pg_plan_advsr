@@ -124,15 +124,15 @@ See: [Usage](#4-usage) for more details.
 
 Functions
 ---------
-- FUNCTION pg_plan_advsr_enable_feedback() RETURNS void
-- FUNCTION pg_plan_advsr_disable_feedback() RETURNS void
-- FUNCTION plan_repo.get_hint(bigint) RETURNS text
+- FUNCTION ``pg_plan_advsr_enable_feedback()`` RETURNS void
+- FUNCTION ``pg_plan_advsr_disable_feedback()`` RETURNS void
+- FUNCTION ``plan_repo.get_hint(bigint)`` RETURNS text
 
 Tables
 ------
-- plan_repo.plan_history
-- plan_repo.norm_queries
-- plan_repo.raw_queries
+- ``plan_repo.plan_history``
+- ``plan_repo.norm_queries``
+- ``plan_repo.raw_queries``
 
 Table "plan_repo.plan_history"
 
@@ -173,14 +173,14 @@ Table "plan_repo.raw_queries"
 3 Options
 =========
 
-- pg_plan_advsr.enabled
+- ``pg_plan_advsr.enabled``
 
 	"ON": Enable pg_plan_advsr. 
 	It allows creating various hints for fixing row estimation errors and also for reproducing a plan.
 	It also stores them to the plan_history table. If you want to use "auto plan tuning using feedback loop", you have to execute below function "pg_plan_advsr_enable_feedback().
 	Default setting is "ON". 
 
-- pg_plan_advsr.quieted
+- ``pg_plan_advsr.quieted``
 
 	"ON": Enable quiet mode. 
 	It allows to disable emmiting the following messages when your EXPLAIN ANALYZE commmand finished.
@@ -194,7 +194,7 @@ Table "plan_repo.raw_queries"
 
 	Default setting is "OFF".
 
-- pg_plan_advsr_enable_feedback()
+- ``pg_plan_advsr_enable_feedback()``
 
 	This function allows you to use feedback loop for plan tuning.
 	Actually, it is a wrapper for these commands:
@@ -203,7 +203,7 @@ Table "plan_repo.raw_queries"
 	    set pg_hint_plan.enable_hint_table to on;
 	    set pg_hint_plan.debug_print to on;
 	
-- pg_plan_advsr_disable_feedback()
+- ``pg_plan_advsr_disable_feedback()``
 
 	This function disables using feedback loop for plan tuning. It is a wrapper for these commands:
 
@@ -220,7 +220,7 @@ There are two types of usage.
 
 - For auto plan tuning
 
-	First, Run select "pg_plan_advsr_enable_feedback();".
+	First, Run ``select pg_plan_advsr_enable_feedback();``.
 	Then, Execute EXPLAIN ANALYZE command (which is your query) repeatedly until row estimation errors had vanished.
 	Finally, You can check a result of the tuning by using the below queries:
 
@@ -240,7 +240,7 @@ There are two types of usage.
 
 - For only getting hints of current query to reproduce a plan on other databases
 
-	First, Run "select pg_plan_advsr_disable_feedback();". 
+	First, Run ``select pg_plan_advsr_disable_feedback();``. 
 	Then, Execute EXPLAIN ANALYZE command (which is your query). 
 	Finally, You can get hints by using the below queries:
 
@@ -291,7 +291,7 @@ TBA
 
 There are two methods of how to install: Using Dockerfile or building pg_plan_advsr manually.
 
-- Dockerfile (experimental)
+- ``Dockerfile (experimental)``
 
 	Operations
 
@@ -300,7 +300,7 @@ There are two methods of how to install: Using Dockerfile or building pg_plan_ad
 	
 	See: build.sh and Dockerfile
 
-- Build and install (make && make install)
+- ``Build and install (make && make install)``
 
 	- Prerequisite for installation
 		- Install postgresql-devel package if you installed PostgreSQL by rpm files
