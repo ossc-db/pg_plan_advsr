@@ -360,9 +360,9 @@ pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query)
 		int				query_len;
 		pgssJumbleState	jstate;
 		Query		   *jumblequery;
-/*
-elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook start ##");
-*/
+		/*
+		elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook start ##");
+		*/
 		query_str = get_query_string(pstate, query, &jumblequery);
 
 		if (query_str && jumblequery)
@@ -399,9 +399,9 @@ elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook start ##");
 										  GetDatabaseEncoding());
 
 		}
-/*
-elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook end ##");
-*/
+		/*
+		elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook end ##");
+		*/
 	}
 }
 
@@ -450,16 +450,6 @@ static void pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 static void
 pg_plan_advsr_ExecutorStart_hook(QueryDesc *queryDesc, int eflags)
 {
-/*
-	if (log_analyze &&
-		(eflags & EXEC_FLAG_EXPLAIN_ONLY) == 0)
-	{
-		queryDesc->instrument_options |=
-			(log_timing ? INSTRUMENT_TIMER : 0)|
-			(log_timing ? 0: INSTRUMENT_ROWS)|
-			(log_buffers ? INSTRUMENT_BUFFERS : 0);
-	}
-*/
 	if (prev_ExecutorStart_hook)
 		prev_ExecutorStart_hook(queryDesc, eflags);
 	else
@@ -528,7 +518,7 @@ pg_plan_advsr_ExecutorFinish_hook(QueryDesc *queryDesc)
 }
 
 /*
- * ExecutorEnd_hook: create hints by using PlannedStmt or ExplainState and output it.
+ * ExecutorEnd_hook: create hints by using PlannedStmt or ExplainState, and output it.
  */
 static void pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
 {
@@ -816,7 +806,7 @@ pg_plan_advsr_planstate_tree_walker(PlanState *planstate,
 	}
 
 	/* Todo: 
-			investigate thease node whether it is needed for creating hints or not.
+			investigate these node whether it is needed for creating hints or not.
 	*/
 	/* special child plans */
 	/*
@@ -1321,16 +1311,13 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 			ExplainState *es)
 {
 	Plan	   *plan = planstate->plan;
-	/*
-	const char *strategy = NULL;
-	const char *partialmode = NULL;
-	const char *operation = NULL;
-	const char *custom_name = NULL;
-	*/
 	bool		haschildren;
+	double		nloops;
+	double		rows;
+	StringInfo  tmp_relnames = makeStringInfo();
 
-elog(DEBUG1, "### CreateScanJoinRowsHints ###");
-elog(DEBUG1, "    Parent Relationship: %s", relationship);
+	elog(DEBUG1, "### CreateScanJoinRowsHints ###");
+	elog(DEBUG1, "    Parent Relationship: %s", relationship);
 
 
 	/* Remove initPlan-s such as CTE */
@@ -1419,144 +1406,65 @@ elog(DEBUG1, "    Parent Relationship: %s", relationship);
 	if (planstate->instrument)
 		InstrEndLoop(planstate->instrument);
 
-	if (es->analyze &&
-		planstate->instrument && planstate->instrument->nloops > 0)
+	if (planstate->instrument)
 	{
-		double		nloops = planstate->instrument->nloops;
-/*
-		double		startup_sec = 1000.0 * planstate->instrument->startup / nloops;
-		double		total_sec = 1000.0 * planstate->instrument->total / nloops;
-*/
-		double		rows = planstate->instrument->ntuples / nloops; /* actual rows */
+		/* EXPLAIN ANALYZE */
+		nloops = planstate->instrument->nloops;
+		rows = planstate->instrument->ntuples / nloops; /* actual rows */
+	}
+	else
+	{
+		/* EXPLAIN */
+		rows = -1;
+	}
+	/* 
+	 * Create join and rows hints.
+	 * In this current design, we use actual rows number as a rows hint.
+	 */
+	switch(nodeTag(plan))
+	{
+		case T_NestLoop:
+		case T_MergeJoin:
+		case T_HashJoin:
+			{
+				Bitmapset  *relids = NULL;
 
-		/* 
-		 * Create join and rows hints.
-		 * In this current design, we use actual rows number as a rows hint.
-		 */
-		StringInfo tmp_relnames = makeStringInfo();
-		switch(nodeTag(plan))
-		{
-			case T_NestLoop:
+				ExplainPreScanNode(planstate, &relids);
+				tmp_relnames->data = get_relnames(es, relids);
+
+				if (join_cnt > 0)
+					appendStringInfo(join_str, "\n");
+
+				if (nodeTag(plan) == T_NestLoop)
+					appendStringInfo(join_str, "%s", "NESTLOOP");
+				else if (nodeTag(plan) == T_MergeJoin)
+					appendStringInfo(join_str, "%s", "MERGEJOIN");
+				else if (nodeTag(plan) == T_HashJoin)
+					appendStringInfo(join_str, "%s", "HASHJOIN");
+
+				appendStringInfo(join_str, "(%s) ", tmp_relnames->data);
+				join_cnt++;
+
+				est_rows = ((Plan *)planstate->plan)->plan_rows; /* estimated rows */
+				act_rows = rows == -1 ? est_rows : rows;
+				diff_rows = act_rows - est_rows; /* diff rows = actual rows - estimated rows */
+
+				if(est_rows != act_rows)
 				{
-					Bitmapset  *relids = NULL;
-					ExplainPreScanNode(planstate, &relids);
-					tmp_relnames->data = get_relnames(es, relids);
-
-					if (join_cnt > 0)
-						appendStringInfo(join_str, "\n");
-					appendStringInfo(join_str, "NESTLOOP(%s) ", tmp_relnames->data);
-					join_cnt++;
-
-					act_rows = rows;
-					est_rows = ((Plan *)planstate->plan)->plan_rows; /* estimated rows */
-					diff_rows = act_rows - est_rows; /* diff rows = actual rows - estimated rows */
-					/*
-					if(diff_rows > 0)
-					{
-						appendStringInfo(rows_str, "ROWS(%s +%.0f) ", tmp_relnames->data, diff_rows);
-					}
-					else if(diff_rows < 0)
-					{
-						appendStringInfo(rows_str, "ROWS(%s %.0f) ", tmp_relnames->data, diff_rows);
-					}
-					*/
-
-					if(est_rows != act_rows)
-					{
-						if (rows_cnt > 0)
-							appendStringInfo(rows_str, "\n");
-						appendStringInfo(rows_str, "ROWS(%s #%.0f) ", tmp_relnames->data, act_rows);
-						rows_cnt++;
-					}
-
-					if(diff_rows < 0)
-						diff_rows = diff_rows * -1.0;
-					elog(DEBUG3, "join diff_rows: %.0f", diff_rows);
-					total_diff_rows = total_diff_rows + diff_rows;
+					if (rows_cnt > 0)
+						appendStringInfo(rows_str, "\n");
+					appendStringInfo(rows_str, "ROWS(%s #%.0f) ", tmp_relnames->data, act_rows);
+					rows_cnt++;
 				}
-				break;
-			case T_MergeJoin:
-				{
-					Bitmapset  *relids = NULL;
-					ExplainPreScanNode(planstate, &relids);
-					tmp_relnames->data = get_relnames(es, relids);
 
-					if (join_cnt > 0)
-						appendStringInfo(join_str, "\n");
-					appendStringInfo(join_str, "MERGEJOIN(%s) ", tmp_relnames->data);
-					join_cnt++;
-
-					act_rows = rows;
-					est_rows = ((Plan *)planstate->plan)->plan_rows; /* estimated rows */
-					diff_rows = act_rows - est_rows; /* diff rows = actual rows - estimated rows */
-					/*
-					if(diff_rows > 0)
-					{
-						appendStringInfo(rows_str, "ROWS(%s +%.0f) ", tmp_relnames->data, diff_rows);
-					}
-					else if(diff_rows < 0)
-					{
-						appendStringInfo(rows_str, "ROWS(%s %.0f) ", tmp_relnames->data, diff_rows);
-					}
-					*/
-
-					if(est_rows != act_rows)
-					{
-						if (rows_cnt > 0)
-							appendStringInfo(rows_str, "\n");
-						
-						appendStringInfo(rows_str, "ROWS(%s #%.0f) ", tmp_relnames->data, act_rows);
-						rows_cnt++;
-					}
-
-					if(diff_rows < 0)
-						diff_rows = diff_rows * -1.0;
-					elog(DEBUG3, "join diff_rows: %.0f", diff_rows);
-					total_diff_rows = total_diff_rows + diff_rows;
-				}
-				break;
-			case T_HashJoin:
-				{
-					Bitmapset  *relids = NULL;
-					ExplainPreScanNode(planstate, &relids);
-					tmp_relnames->data = get_relnames(es, relids);
-
-					if (join_cnt > 0)
-						appendStringInfo(join_str, "\n");
-					appendStringInfo(join_str, "HASHJOIN(%s) ", tmp_relnames->data);
-					join_cnt++;
-
-					act_rows = rows;
-					est_rows = ((Plan *)planstate->plan)->plan_rows; /* estimated rows */
-					diff_rows = act_rows - est_rows; /* diff rows = actual rows - estimated rows */
-					/*
-					if(diff_rows > 0)
-					{
-						appendStringInfo(rows_str, "ROWS(%s +%.0f) ", tmp_relnames->data, diff_rows);
-					}
-					else if(diff_rows < 0)
-					{
-						appendStringInfo(rows_str, "ROWS(%s %.0f) ", tmp_relnames->data, diff_rows);
-					}
-					*/
-
-					if(est_rows != act_rows)
-					{
-						if (rows_cnt > 0)
-							appendStringInfo(rows_str, "\n");
-						appendStringInfo(rows_str, "ROWS(%s #%.0f) ", tmp_relnames->data, act_rows);
-						rows_cnt++;
-					}
-
-					if(diff_rows < 0)
-						diff_rows = diff_rows * -1.0;
-					elog(DEBUG3, "join diff_rows: %.0f", diff_rows);
-					total_diff_rows = total_diff_rows + diff_rows;
-				}
-				break;
-			default:
-				break;
-		}
+				if(diff_rows < 0)
+					diff_rows = diff_rows * -1.0;
+				elog(DEBUG3, "join diff_rows: %.0f", diff_rows);
+				total_diff_rows = total_diff_rows + diff_rows;
+			}
+			break;
+		default:
+			break;
 	}
 
 	/* Get ready to display the child plans */
@@ -1603,7 +1511,7 @@ pg_plan_advsr_NewExplainState(void)
 {
 	ExplainState *es = (ExplainState *) palloc0(sizeof(ExplainState));
 
-elog(DEBUG1, "### pg_plan_advsr_NewExplainState ###");
+	elog(DEBUG1, "### pg_plan_advsr_NewExplainState ###");
 
 	/* Set default options (most fields can be left as zeroes). */
 	es->costs = true;
@@ -1643,7 +1551,7 @@ pg_plan_advsr_ExplainTargetRel(Plan *plan, Index rti, ExplainState *es)
 	RangeTblEntry *rte;
 	char	   *refname;
 
-elog(DEBUG1, "    # pg_plan_advsr_ExplainTargetRel #");
+	elog(DEBUG1, "    # pg_plan_advsr_ExplainTargetRel #");
 
 	rte = rt_fetch(rti, es->rtable);
 	refname = (char *) list_nth(es->rtable_names, rti - 1);
@@ -1793,11 +1701,11 @@ void get_rows_hint_from_table(const char *conninfo, const char *norm_query_str, 
 	{
 		case PGRES_TUPLES_OK:
 		case PGRES_COMMAND_OK:
-elog(DEBUG3, "res->ntups: %d", res->ntups);
-elog(DEBUG3, "res->numAttributes: %d", res->numAttributes);
+			elog(DEBUG3, "res->ntups: %d", res->ntups);
+			elog(DEBUG3, "res->numAttributes: %d", res->numAttributes);
 			hint_fnum = PQfnumber(res, "hints");
 			hint = PQgetvalue(res, 0, hint_fnum);
-elog(DEBUG3, "prev_rows_hint: %s", hint);
+			elog(DEBUG3, "prev_rows_hint: %s", hint);
 			if (hint)
 				appendStringInfo(prev_rows_hint, "%s", hint);
 			
