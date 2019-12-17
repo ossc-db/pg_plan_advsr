@@ -505,7 +505,6 @@ selectHints(const char *norm_query_string, const char *application_name, StringI
 static bool
 deleteHints(const char *norm_query_string, const char *application_name)
 {
-  bool ret = false;
   Relation rel = NULL;
   Oid relationId = get_relname_relid("hints",
 				     LookupExplicitNamespace("hint_plan", true));
@@ -548,7 +547,7 @@ deleteHints(const char *norm_query_string, const char *application_name)
   systable_endscan(scanDescriptor);
   heap_close(rel, NoLock);
 
-  return ret;
+  return true;
 }
 
 /*
