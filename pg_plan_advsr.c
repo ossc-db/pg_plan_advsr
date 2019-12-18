@@ -187,39 +187,39 @@ void		replaceAll(char *buf, const char *before, const char *after);
 
 
 /* plan_repo.plan_history */
-#define Natts_plan_history			13
-#define Anum_plan_history_id			1	/* serial */
+#define Natts_plan_history					13
+#define Anum_plan_history_id				1	/* serial */
 #define Anum_plan_history_norm_query_hash	2	/* text */
 #define Anum_plan_history_pgsp_queryid		3	/* bigint */
 #define Anum_plan_history_pgsp_planid		4	/* bigint */
 #define Anum_plan_history_execution_time	5	/* double precision */
-#define Anum_plan_history_rows_hint		6	/* text */
-#define Anum_plan_history_scan_hint		7	/* text */
-#define Anum_plan_history_join_hint		8	/* text */
-#define Anum_plan_history_lead_hint		9	/* text */
+#define Anum_plan_history_rows_hint			6	/* text */
+#define Anum_plan_history_scan_hint			7	/* text */
+#define Anum_plan_history_join_hint			8	/* text */
+#define Anum_plan_history_lead_hint			9	/* text */
 #define Anum_plan_history_diff_of_joins		10	/* double precision */
-#define Anum_plan_history_join_cnt		11	/* int */
+#define Anum_plan_history_join_cnt			11	/* int */
 #define Anum_plan_history_application_name	12	/* text */
-#define Anum_plan_history_timestamp		13	/* timestamp */
+#define Anum_plan_history_timestamp			13	/* timestamp */
 
 /* plan_repo.norm_queries */
-#define Natts_norm_queries			2
+#define Natts_norm_queries					2
 #define Anum_norm_queries_norm_query_hash	1	/* text */
 #define Anum_norm_queries_norm_query_string	2	/* text */
 
 /* plan_repo.raw_queries */
-#define Natts_raw_queries			4
+#define Natts_raw_queries					4
 #define Anum_raw_queries_norm_query_hash	1	/* text */
 #define Anum_raw_queries_raw_query_id		2	/* serial */
 #define Anum_raw_queries_raw_query_string	3	/* text */
-#define Anum_raw_queries_timestamp		4	/* timestamp */
+#define Anum_raw_queries_timestamp			4	/* timestamp */
 
 /* hint_plan.hints */
-#define Natts_hints				4
-#define Anum_hints_id				1	/* serial */
+#define Natts_hints							4
+#define Anum_hints_id						1	/* serial */
 #define Anum_hints_norm_query_string		2	/* text */
-#define Anum_hints_application_name		3	/* text */
-#define Anum_hints_hints			4	/* text */
+#define Anum_hints_application_name			3	/* text */
+#define Anum_hints_hints					4	/* text */
 
 static Oid	extensionOwner(void);
 static Oid	resolveRelationId(text *relationName, bool missingOk);
@@ -729,7 +729,6 @@ pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query)
 		/*
 		 * elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook start ##");
 		 */
-
 		query_str = get_query_string(pstate, query, &jumblequery);
 
 		if (query_str && jumblequery)
@@ -750,7 +749,6 @@ pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query)
 			/*
 			 * Normalize the query string by replacing constants with '?'
 			 */
-
 			/*
 			 * Search hint string which is stored keyed by query string and
 			 * application name.  The query string is normalized to allow
@@ -972,10 +970,10 @@ create_pgsp_planid(QueryDesc *queryDesc)
 	ExplainPrintPlan(es, queryDesc);
 	/* Trigger is not supported */
 	/*----
-	if (log_triggers)
-		pgspExplainTriggers(es, queryDesc);
-	*----
-	*/
+	 if (log_triggers)
+	 	pgspExplainTriggers(es, queryDesc);
+	 *----
+	 */
 	ExplainEndOutput(es);
 
 	/* Remove last line break */
@@ -1011,7 +1009,6 @@ hash_query(const char *query)
 
 	return queryid;
 }
-
 
 
 /*
@@ -1153,7 +1150,6 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
  * pg_plan_advsr_planstate_tree_walker, pg_plan_advsr_planstate_walk_subplans and
  * pg_plan_advsr_planstate_walk_members came from src/backend/nodes/nodeFuncs.c
  */
-
 /* This function is only for current node, lefttree and righttree */
 /*
  * planstate_tree_walker --- walk plan state trees
@@ -1235,15 +1231,15 @@ pg_plan_advsr_planstate_tree_walker(PlanState *planstate,
 		default:
 			break;
 	}
-	*----
-	*/
+	 *----
+	 */
 
 	/* subPlan-s */
 	/*----
-	if (planstate_walk_subplans(planstate->subPlan, walker, context))
+	 if (planstate_walk_subplans(planstate->subPlan, walker, context))
 		return true;
-	*----
-	*/
+	 *----
+	 */
 
 	return false;
 }
@@ -1713,9 +1709,8 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 			break;
 		case T_BitmapIndexScan:
 			{
-				/*----
-				  BitmapIndexScan *bitmapindexscan = (BitmapIndexScan *) plan;
-				 *----
+				/*
+				 * BitmapIndexScan *bitmapindexscan = (BitmapIndexScan *) plan;
 				 */
 			}
 			break;
@@ -1943,7 +1938,7 @@ replaceAll(char *buf, const char *before, const char *after)
 	char	   *dup = pstrdup(buf);
 
 	//copy buf, and malloc
-		char	   *ptr1,
+	char	   *ptr1,
 			   *ptr2;
 
 	int			dup_len = strlen(dup);
