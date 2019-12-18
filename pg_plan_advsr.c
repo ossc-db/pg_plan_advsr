@@ -39,6 +39,12 @@
 #include "utils/fmgroids.h"
 
 #include "libpq-int.h"
+#if PG_VERSION_NUM >= 110000
+#include "utils/rel.h"
+#endif
+#if PG_VERSION_NUM >= 120000
+#include "access/table.h"
+#endif
 
 /* came from pg_hint_plan REL10_1_3_2 */
 #include "normalize_query.h"
