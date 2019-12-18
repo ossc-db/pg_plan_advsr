@@ -723,6 +723,7 @@ pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query)
 		/*
 		 * elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook start ##");
 		 */
+
 		query_str = get_query_string(pstate, query, &jumblequery);
 
 		if (query_str && jumblequery)
@@ -760,7 +761,6 @@ pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query)
 										  GetDatabaseEncoding());
 
 		}
-
 		/*
 		 * elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook end ##");
 		 */
@@ -1648,7 +1648,6 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 
 	elog(DEBUG1, "### CreateScanJoinRowsHints ###");
 	elog(DEBUG1, "    Parent Relationship: %s", relationship);
-
 
 	/* Remove initPlan-s such as CTE */
 	if (planstate->initPlan)
