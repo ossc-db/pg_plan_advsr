@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * pg_plan_advsr.c
- *		Automatic plan tuning by correcting row count estimation errors 
+ *		Automatic plan tuning by correcting row count estimation errors
  *		using a feedback loop between planner and executor.
  *
  * Copyright (c) 2019, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
@@ -49,14 +49,14 @@
 PG_MODULE_MAGIC;
 
 
-bool isExplain;
+bool		isExplain;
 
 /* for leading hint */
 typedef struct LeadingContext
 {
-	StringInfo lead_str;
+	StringInfo	lead_str;
 	ExplainState *es;
-} LeadingContext;
+}			LeadingContext;
 
 /* scan method/join method/leading hints */
 static StringInfo scan_str;
@@ -66,53 +66,57 @@ LeadingContext *leadcxt;
 
 /* hash value made by queryDesc->sourceText */
 static uint32 pgsp_queryid;
+
 /* hash value made by normalized_plan */
 static uint32 pgsp_planid;
 
 /* estimated/actual rows number */
 static double est_rows;
 static double act_rows;
-static double diff_rows; /* = act_rows - est_rows */
+static double diff_rows;		/* = act_rows - est_rows */
 static double total_diff_rows;
 
 /* counters */
-static int scan_cnt;
-static int join_cnt;
-static int rows_cnt;
+static int	scan_cnt;
+static int	join_cnt;
+static int	rows_cnt;
 
 /* This is made by generate_normalized_query in post_parse_analyze_hook */
-char *normalized_query;
+char	   *normalized_query;
+
 /* Current nesting depth of ExecutorRun+ProcessUtility calls */
 static int	nested_level = 0;
 
 /* GUC variables */
 /* enabling / disabling pg_plan_advsr during EXPLAIN ANALYZE */
 static bool pg_plan_advsr_is_enabled;
+
 /* enabling / disable quiet mode */
 static bool pg_plan_advsr_is_quieted;
 
 /* Saved hook values in case of unload */
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
-static ProcessUtility_hook_type		prev_ProcessUtility_hook = NULL;
-static ExecutorStart_hook_type		prev_ExecutorStart_hook = NULL;
-static ExecutorRun_hook_type		prev_ExecutorRun_hook = NULL;
-static ExecutorFinish_hook_type		prev_ExecutorFinish_hook = NULL;
-static ExecutorEnd_hook_type		prev_ExecutorEnd_hook = NULL;
+static ProcessUtility_hook_type prev_ProcessUtility_hook = NULL;
+static ExecutorStart_hook_type prev_ExecutorStart_hook = NULL;
+static ExecutorRun_hook_type prev_ExecutorRun_hook = NULL;
+static ExecutorFinish_hook_type prev_ExecutorFinish_hook = NULL;
+static ExecutorEnd_hook_type prev_ExecutorEnd_hook = NULL;
 
 void		_PG_init(void);
 void		_PG_fini(void);
 
 PG_FUNCTION_INFO_V1(pg_plan_advsr_enable_feedback);
-Datum       pg_plan_advsr_enable_feedback(PG_FUNCTION_ARGS);
+Datum		pg_plan_advsr_enable_feedback(PG_FUNCTION_ARGS);
+
 PG_FUNCTION_INFO_V1(pg_plan_advsr_disable_feedback);
-Datum       pg_plan_advsr_disable_feedback(PG_FUNCTION_ARGS);
+Datum		pg_plan_advsr_disable_feedback(PG_FUNCTION_ARGS);
 
 /* Hook functions for pg_plan_advsr */
 static void pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query);
 static void pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 											  const char *queryString,
 											  ProcessUtilityContext context,
-											  ParamListInfo params,QueryEnvironment *queryEnv,
+											  ParamListInfo params, QueryEnvironment *queryEnv,
 											  DestReceiver *dest,
 											  char *completionTag);
 static void pg_plan_advsr_ExecutorStart_hook(QueryDesc *queryDesc, int eflags);
@@ -125,54 +129,55 @@ static void pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc);
 static bool pg_plan_advsr_query_walker(Node *parsetree);
 
 /* This function came from pg_hint_plan.c */
-static const char *
-get_query_string(ParseState *pstate, Query *query, Query **jumblequery);
+static const char *get_query_string(ParseState *pstate, Query *query, Query **jumblequery);
 
-ExplainState * pg_plan_advsr_NewExplainState(void);
+ExplainState *pg_plan_advsr_NewExplainState(void);
 
 /* entry point of pg_plan_advsr */
-void pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc);
+void		pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc);
 
-void CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
-							 const char *relationship, const char *plan_name,
-							 ExplainState *es);
+void		CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
+									const char *relationship, const char *plan_name,
+									ExplainState *es);
 
 /* This function called by planstate_tree_walker for creating Leading Hints */
-bool CreateLeadingHint(PlanState *planstate, LeadingContext *lead);
+bool		CreateLeadingHint(PlanState *planstate, LeadingContext * lead);
 
-void store_info_to_tables(double totaltime, const char *sourcetext); /* store query, hints and diff to tables */
+void		store_info_to_tables(double totaltime, const char *sourcetext); /* store query, hints
+																			 * and diff to tables */
 
 /* these functions based on explain.c */
-bool ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used);
+bool		ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used);
 
-bool pg_plan_advsr_planstate_tree_walker(PlanState *planstate,
-					 bool (*walker) (),
-					 void *context);
-bool pg_plan_advsr_planstate_walk_subplans(List *plans,
-					   bool (*walker) (),
-					   void *context);
+bool		pg_plan_advsr_planstate_tree_walker(PlanState *planstate,
+												bool (*walker) (),
+												void *context);
+bool		pg_plan_advsr_planstate_walk_subplans(List *plans,
+												  bool (*walker) (),
+												  void *context);
 
-bool pg_plan_advsr_planstate_walk_members(List *plans, 
-										  PlanState **planstates,
-										  bool (*walker) (),
-										  void *context);
+bool		pg_plan_advsr_planstate_walk_members(List *plans,
+												 PlanState **planstates,
+												 bool (*walker) (),
+												 void *context);
 
-void pg_plan_advsr_ExplainSubPlans(List *plans, List *ancestors,
-								   const char *relationship, ExplainState *es);
+void		pg_plan_advsr_ExplainSubPlans(List *plans, List *ancestors,
+										  const char *relationship, ExplainState *es);
 
-void pg_plan_advsr_ExplainScanTarget(Scan *plan, ExplainState *es);
-void pg_plan_advsr_ExplainTargetRel(Plan *plan, Index rti, ExplainState *es);
+void		pg_plan_advsr_ExplainScanTarget(Scan *plan, ExplainState *es);
+void		pg_plan_advsr_ExplainTargetRel(Plan *plan, Index rti, ExplainState *es);
 
-char *get_relnames(ExplainState *es, Relids relids);
-char *get_target_relname(Index rti, ExplainState *es);
+char	   *get_relnames(ExplainState *es, Relids relids);
+char	   *get_target_relname(Index rti, ExplainState *es);
 
 /* inspired from pg_store_plans.c */
-uint32 create_pgsp_planid(QueryDesc *queryDesc);
+uint32		create_pgsp_planid(QueryDesc *queryDesc);
+
 /* came from pg_store_plans.c */
-static uint32 hash_query(const char* query);
+static uint32 hash_query(const char *query);
 
 /* replace all before strings to after strings in buf strings */
-void replaceAll(char *buf, const char *before, const char *after);
+void		replaceAll(char *buf, const char *before, const char *after);
 
 
 /* plan_repo.plan_history */
@@ -188,8 +193,8 @@ void replaceAll(char *buf, const char *before, const char *after);
 #define Anum_plan_history_lead_hint		9	/* text */
 #define Anum_plan_history_diff_of_joins		10	/* double precision */
 #define Anum_plan_history_join_cnt		11	/* int */
-#define Anum_plan_history_application_name	12      /* text */
-#define Anum_plan_history_timestamp		13      /* timestamp */
+#define Anum_plan_history_application_name	12	/* text */
+#define Anum_plan_history_timestamp		13	/* timestamp */
 
 /* plan_repo.norm_queries */
 #define Natts_norm_queries			2
@@ -210,13 +215,13 @@ void replaceAll(char *buf, const char *before, const char *after);
 #define Anum_hints_application_name		3	/* text */
 #define Anum_hints_hints			4	/* text */
 
-static Oid extensionOwner(void);
-static Oid resolveRelationId(text *relationName, bool missingOk);
+static Oid	extensionOwner(void);
+static Oid	resolveRelationId(text *relationName, bool missingOk);
 static uint64 getNextVal(const char *sequence);
 static bool insertPlanHistory(const char *norm_query_hash, const uint32 pgsp_queryid, const uint32 pgsp_planid,
-			      const double execution_time, const char *rows_hint, const char *scan_hint,
-			      const char *join_hint, const char *lead_hint, const double diff_of_joins,
-			      const int join_cnt, char *application_name);
+							  const double execution_time, const char *rows_hint, const char *scan_hint,
+							  const char *join_hint, const char *lead_hint, const double diff_of_joins,
+							  const int join_cnt, char *application_name);
 static bool insertNormQueries(const char *norm_query_hash, const char *norm_query_string);
 static bool insertRawQueries(const char *raw_query_hash, const char *raw_query_string);
 static void selectHints(const char *norm_query_string, const char *application_name, StringInfo prev_rows_hint);
@@ -229,40 +234,40 @@ static bool insertHints(const char *norm_query_string, const char *application_n
 static Oid
 extensionOwner(void)
 {
-  Relation relation = NULL;
-  SysScanDesc scandesc;
-  ScanKeyData entry[1];
-  HeapTuple extensionTuple = NULL;
-  Form_pg_extension extensionForm = NULL;
-  Oid extensionOwner;
+	Relation	relation = NULL;
+	SysScanDesc scandesc;
+	ScanKeyData entry[1];
+	HeapTuple	extensionTuple = NULL;
+	Form_pg_extension extensionForm = NULL;
+	Oid			extensionOwner;
 
-  relation = heap_open(ExtensionRelationId, AccessShareLock);
+	relation = heap_open(ExtensionRelationId, AccessShareLock);
 
-  ScanKeyInit(&entry[0], Anum_pg_extension_extname,
-	      BTEqualStrategyNumber, F_NAMEEQ,
-	      CStringGetDatum("pg_plan_advsr"));
+	ScanKeyInit(&entry[0], Anum_pg_extension_extname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum("pg_plan_advsr"));
 
-  scandesc = systable_beginscan(relation, ExtensionNameIndexId, true,
-				NULL, 1, entry);
+	scandesc = systable_beginscan(relation, ExtensionNameIndexId, true,
+								  NULL, 1, entry);
 
-  extensionTuple = systable_getnext(scandesc);
-  if (HeapTupleIsValid(extensionTuple))
-    {
-      extensionForm = (Form_pg_extension) GETSTRUCT(extensionTuple);
-      if (!superuser_arg(extensionForm->extowner))
-	ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-			errmsg("pg_plan_advsr extension needs to be owned by superuser")));
-      extensionOwner = extensionForm->extowner;
-      Assert(OidIsValid(extensionOwner));
-    }
-  else
-      ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-		      errmsg("pg_plan_advsr extension not loaded")));
+	extensionTuple = systable_getnext(scandesc);
+	if (HeapTupleIsValid(extensionTuple))
+	{
+		extensionForm = (Form_pg_extension) GETSTRUCT(extensionTuple);
+		if (!superuser_arg(extensionForm->extowner))
+			ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+							errmsg("pg_plan_advsr extension needs to be owned by superuser")));
+		extensionOwner = extensionForm->extowner;
+		Assert(OidIsValid(extensionOwner));
+	}
+	else
+		ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						errmsg("pg_plan_advsr extension not loaded")));
 
-  systable_endscan(scandesc);
-  heap_close(relation, AccessShareLock);
+	systable_endscan(scandesc);
+	heap_close(relation, AccessShareLock);
 
-  return extensionOwner;
+	return extensionOwner;
 }
 
 /*
@@ -271,15 +276,15 @@ extensionOwner(void)
 static Oid
 resolveRelationId(text *relationName, bool missingOk)
 {
-  List *relationNameList = NIL;
-  RangeVar *relation = NULL;
-  Oid relationId = InvalidOid;
+	List	   *relationNameList = NIL;
+	RangeVar   *relation = NULL;
+	Oid			relationId = InvalidOid;
 
-  relationNameList = textToQualifiedNameList(relationName);
-  relation = makeRangeVarFromNameList(relationNameList);
-  relationId = RangeVarGetRelid(relation, NoLock, missingOk);
+	relationNameList = textToQualifiedNameList(relationName);
+	relation = makeRangeVarFromNameList(relationNameList);
+	relationId = RangeVarGetRelid(relation, NoLock, missingOk);
 
-  return relationId;
+	return relationId;
 }
 
 /*
@@ -288,20 +293,20 @@ resolveRelationId(text *relationName, bool missingOk)
 static uint64
 getNextVal(const char *sequence)
 {
-  Oid sequenceId = InvalidOid;
-  Datum sequenceIdDatum = 0;
-  Oid savedUserId = InvalidOid;
-  int savedSecurityContext = 0;
-  Datum nextValDatum = 0;
+	Oid			sequenceId = InvalidOid;
+	Datum		sequenceIdDatum = 0;
+	Oid			savedUserId = InvalidOid;
+	int			savedSecurityContext = 0;
+	Datum		nextValDatum = 0;
 
-  sequenceId = resolveRelationId(cstring_to_text(sequence), false);
-  sequenceIdDatum = ObjectIdGetDatum(sequenceId);
-  GetUserIdAndSecContext(&savedUserId, &savedSecurityContext);
-  SetUserIdAndSecContext(extensionOwner(), SECURITY_LOCAL_USERID_CHANGE);
-  nextValDatum = DirectFunctionCall1(nextval_oid, sequenceIdDatum);
-  SetUserIdAndSecContext(savedUserId, savedSecurityContext);
+	sequenceId = resolveRelationId(cstring_to_text(sequence), false);
+	sequenceIdDatum = ObjectIdGetDatum(sequenceId);
+	GetUserIdAndSecContext(&savedUserId, &savedSecurityContext);
+	SetUserIdAndSecContext(extensionOwner(), SECURITY_LOCAL_USERID_CHANGE);
+	nextValDatum = DirectFunctionCall1(nextval_oid, sequenceIdDatum);
+	SetUserIdAndSecContext(savedUserId, savedSecurityContext);
 
-  return DatumGetInt64(nextValDatum);
+	return DatumGetInt64(nextValDatum);
 }
 
 /*
@@ -309,64 +314,64 @@ getNextVal(const char *sequence)
  */
 static bool
 insertPlanHistory(const char *norm_query_hash, const uint32 pgsp_queryid, const uint32 pgsp_planid,
-		  const double execution_time, const char *rows_hint, const char *scan_hint,
-		  const char *join_hint, const char *lead_hint, const double diff_of_joins,
-		  const int join_cnt, char *application_name)
+				  const double execution_time, const char *rows_hint, const char *scan_hint,
+				  const char *join_hint, const char *lead_hint, const double diff_of_joins,
+				  const int join_cnt, char *application_name)
 {
-  Relation rel = NULL;
-  TupleDesc tupleDescriptor = NULL;
-  HeapTuple heapTuple = NULL;
-  Datum values[Natts_plan_history];
-  bool isNulls[Natts_plan_history];
+	Relation	rel = NULL;
+	TupleDesc	tupleDescriptor = NULL;
+	HeapTuple	heapTuple = NULL;
+	Datum		values[Natts_plan_history];
+	bool		isNulls[Natts_plan_history];
 
-  Oid relationId = get_relname_relid("plan_history", LookupExplicitNamespace("plan_repo", true));
+	Oid			relationId = get_relname_relid("plan_history", LookupExplicitNamespace("plan_repo", true));
 
-  if (relationId == InvalidOid)
-    return false;
+	if (relationId == InvalidOid)
+		return false;
 
-  /* form new shard tuple */
-  memset(values, 0, sizeof(values));
-  memset(isNulls, false, sizeof(isNulls));
+	/* form new shard tuple */
+	memset(values, 0, sizeof(values));
+	memset(isNulls, false, sizeof(isNulls));
 
-  values[Anum_plan_history_id - 1] = Int64GetDatum(getNextVal("plan_repo.plan_history_id_seq"));
-  isNulls[Anum_plan_history_id - 1] = false;
+	values[Anum_plan_history_id - 1] = Int64GetDatum(getNextVal("plan_repo.plan_history_id_seq"));
+	isNulls[Anum_plan_history_id - 1] = false;
 
-  values[Anum_plan_history_norm_query_hash - 1] = CStringGetTextDatum(norm_query_hash);
-  isNulls[Anum_plan_history_norm_query_hash - 1] = (norm_query_hash == NULL) ? true : false;
-  values[Anum_plan_history_pgsp_queryid - 1] = Int32GetDatum(pgsp_queryid);
-  isNulls[Anum_plan_history_pgsp_queryid - 1] = false;
-  values[Anum_plan_history_pgsp_planid - 1] = Int32GetDatum(pgsp_planid);
-  isNulls[Anum_plan_history_pgsp_planid - 1] = false;
-  values[Anum_plan_history_execution_time - 1] = Float8GetDatum(execution_time);
-  isNulls[Anum_plan_history_execution_time - 1] = false;
-  values[Anum_plan_history_rows_hint - 1] = CStringGetTextDatum(rows_hint);
-  isNulls[Anum_plan_history_rows_hint - 1] = (rows_hint == NULL) ? true : false;
-  values[Anum_plan_history_scan_hint - 1] = CStringGetTextDatum(scan_hint);
-  isNulls[Anum_plan_history_scan_hint - 1] = (scan_hint == NULL) ? true : false;
-  values[Anum_plan_history_join_hint - 1] = CStringGetTextDatum(join_hint);
-  isNulls[Anum_plan_history_join_hint - 1] = (join_hint == NULL) ? true : false;
-  values[Anum_plan_history_lead_hint - 1] = CStringGetTextDatum(lead_hint);
-  isNulls[Anum_plan_history_lead_hint - 1] = (lead_hint == NULL) ? true : false;
+	values[Anum_plan_history_norm_query_hash - 1] = CStringGetTextDatum(norm_query_hash);
+	isNulls[Anum_plan_history_norm_query_hash - 1] = (norm_query_hash == NULL) ? true : false;
+	values[Anum_plan_history_pgsp_queryid - 1] = Int32GetDatum(pgsp_queryid);
+	isNulls[Anum_plan_history_pgsp_queryid - 1] = false;
+	values[Anum_plan_history_pgsp_planid - 1] = Int32GetDatum(pgsp_planid);
+	isNulls[Anum_plan_history_pgsp_planid - 1] = false;
+	values[Anum_plan_history_execution_time - 1] = Float8GetDatum(execution_time);
+	isNulls[Anum_plan_history_execution_time - 1] = false;
+	values[Anum_plan_history_rows_hint - 1] = CStringGetTextDatum(rows_hint);
+	isNulls[Anum_plan_history_rows_hint - 1] = (rows_hint == NULL) ? true : false;
+	values[Anum_plan_history_scan_hint - 1] = CStringGetTextDatum(scan_hint);
+	isNulls[Anum_plan_history_scan_hint - 1] = (scan_hint == NULL) ? true : false;
+	values[Anum_plan_history_join_hint - 1] = CStringGetTextDatum(join_hint);
+	isNulls[Anum_plan_history_join_hint - 1] = (join_hint == NULL) ? true : false;
+	values[Anum_plan_history_lead_hint - 1] = CStringGetTextDatum(lead_hint);
+	isNulls[Anum_plan_history_lead_hint - 1] = (lead_hint == NULL) ? true : false;
 
-  values[Anum_plan_history_diff_of_joins - 1] = Float8GetDatum(diff_of_joins);
-  isNulls[Anum_plan_history_diff_of_joins - 1] = false;
-  values[Anum_plan_history_join_cnt - 1] = Int32GetDatum(join_cnt);
-  isNulls[Anum_plan_history_join_cnt - 1] = false;
-  values[Anum_plan_history_application_name - 1] = CStringGetTextDatum(application_name);
-  isNulls[Anum_plan_history_application_name - 1] = (application_name == NULL) ? true : false;
-  values[Anum_plan_history_timestamp - 1] = TimestampGetDatum(GetCurrentTimestamp());
-  isNulls[Anum_plan_history_timestamp - 1] = false;
+	values[Anum_plan_history_diff_of_joins - 1] = Float8GetDatum(diff_of_joins);
+	isNulls[Anum_plan_history_diff_of_joins - 1] = false;
+	values[Anum_plan_history_join_cnt - 1] = Int32GetDatum(join_cnt);
+	isNulls[Anum_plan_history_join_cnt - 1] = false;
+	values[Anum_plan_history_application_name - 1] = CStringGetTextDatum(application_name);
+	isNulls[Anum_plan_history_application_name - 1] = (application_name == NULL) ? true : false;
+	values[Anum_plan_history_timestamp - 1] = TimestampGetDatum(GetCurrentTimestamp());
+	isNulls[Anum_plan_history_timestamp - 1] = false;
 
-  rel = heap_open(relationId, RowExclusiveLock);
-  if (rel == NULL)
-    return false;
-  tupleDescriptor = RelationGetDescr(rel);
-  heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
-  CatalogTupleInsert(rel, heapTuple);
-  CommandCounterIncrement();
-  heap_close(rel, NoLock);
+	rel = heap_open(relationId, RowExclusiveLock);
+	if (rel == NULL)
+		return false;
+	tupleDescriptor = RelationGetDescr(rel);
+	heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
+	CatalogTupleInsert(rel, heapTuple);
+	CommandCounterIncrement();
+	heap_close(rel, NoLock);
 
-  return true;
+	return true;
 }
 
 /*
@@ -375,35 +380,35 @@ insertPlanHistory(const char *norm_query_hash, const uint32 pgsp_queryid, const 
 static bool
 insertNormQueries(const char *norm_query_hash, const char *norm_query_string)
 {
-  Relation rel = NULL;
-  TupleDesc tupleDescriptor = NULL;
-  HeapTuple heapTuple = NULL;
-  Datum values[Natts_norm_queries];
-  bool isNulls[Natts_norm_queries];
-  Oid relationId = get_relname_relid("norm_queries", LookupExplicitNamespace("plan_repo", true));
+	Relation	rel = NULL;
+	TupleDesc	tupleDescriptor = NULL;
+	HeapTuple	heapTuple = NULL;
+	Datum		values[Natts_norm_queries];
+	bool		isNulls[Natts_norm_queries];
+	Oid			relationId = get_relname_relid("norm_queries", LookupExplicitNamespace("plan_repo", true));
 
-  if (relationId == InvalidOid)
-    return false;
+	if (relationId == InvalidOid)
+		return false;
 
-  /* form new shard tuple */
-  memset(values, 0, sizeof(values));
-  memset(isNulls, false, sizeof(isNulls));
+	/* form new shard tuple */
+	memset(values, 0, sizeof(values));
+	memset(isNulls, false, sizeof(isNulls));
 
-  values[Anum_norm_queries_norm_query_hash - 1] = CStringGetTextDatum(norm_query_hash);
-  isNulls[Anum_norm_queries_norm_query_hash - 1] = (norm_query_hash == NULL) ? true : false;
-  values[Anum_norm_queries_norm_query_string - 1] = CStringGetTextDatum(norm_query_string);
-  isNulls[Anum_norm_queries_norm_query_string - 1] = (norm_query_string == NULL) ? true : false;
+	values[Anum_norm_queries_norm_query_hash - 1] = CStringGetTextDatum(norm_query_hash);
+	isNulls[Anum_norm_queries_norm_query_hash - 1] = (norm_query_hash == NULL) ? true : false;
+	values[Anum_norm_queries_norm_query_string - 1] = CStringGetTextDatum(norm_query_string);
+	isNulls[Anum_norm_queries_norm_query_string - 1] = (norm_query_string == NULL) ? true : false;
 
-  rel = heap_open(relationId, RowExclusiveLock);
-  if (rel == NULL)
-    return false;
-  tupleDescriptor = RelationGetDescr(rel);
-  heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
-  CatalogTupleInsert(rel, heapTuple);
-  CommandCounterIncrement();
-  heap_close(rel, NoLock);
+	rel = heap_open(relationId, RowExclusiveLock);
+	if (rel == NULL)
+		return false;
+	tupleDescriptor = RelationGetDescr(rel);
+	heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
+	CatalogTupleInsert(rel, heapTuple);
+	CommandCounterIncrement();
+	heap_close(rel, NoLock);
 
-  return true;
+	return true;
 }
 
 /*
@@ -412,40 +417,40 @@ insertNormQueries(const char *norm_query_hash, const char *norm_query_string)
 static bool
 insertRawQueries(const char *raw_query_hash, const char *raw_query_string)
 {
-  Relation rel = NULL;
-  TupleDesc tupleDescriptor = NULL;
-  HeapTuple heapTuple = NULL;
-  Datum values[Natts_raw_queries];
-  bool isNulls[Natts_raw_queries];
+	Relation	rel = NULL;
+	TupleDesc	tupleDescriptor = NULL;
+	HeapTuple	heapTuple = NULL;
+	Datum		values[Natts_raw_queries];
+	bool		isNulls[Natts_raw_queries];
 
-  Oid relationId = get_relname_relid("raw_queries", LookupExplicitNamespace("plan_repo", true));
+	Oid			relationId = get_relname_relid("raw_queries", LookupExplicitNamespace("plan_repo", true));
 
-  if (relationId == InvalidOid)
-    return false;
+	if (relationId == InvalidOid)
+		return false;
 
-  /* form new shard tuple */
-  memset(values, 0, sizeof(values));
-  memset(isNulls, false, sizeof(isNulls));
+	/* form new shard tuple */
+	memset(values, 0, sizeof(values));
+	memset(isNulls, false, sizeof(isNulls));
 
-  values[Anum_raw_queries_norm_query_hash - 1] = CStringGetTextDatum(raw_query_hash);
-  isNulls[Anum_raw_queries_norm_query_hash - 1] = (raw_query_hash == NULL) ? true : false;
-  values[Anum_raw_queries_raw_query_id - 1] = Int64GetDatum(getNextVal("plan_repo.raw_queries_raw_query_id_seq"));
-  isNulls[Anum_raw_queries_raw_query_id - 1] = false;
-  values[Anum_raw_queries_raw_query_string - 1] = CStringGetTextDatum(raw_query_string);
-  isNulls[Anum_raw_queries_raw_query_string - 1] = (raw_query_string == NULL) ? true : false;
-  values[Anum_raw_queries_timestamp - 1] = TimestampGetDatum(GetCurrentTimestamp());
-  isNulls[Anum_raw_queries_timestamp - 1] = false;
+	values[Anum_raw_queries_norm_query_hash - 1] = CStringGetTextDatum(raw_query_hash);
+	isNulls[Anum_raw_queries_norm_query_hash - 1] = (raw_query_hash == NULL) ? true : false;
+	values[Anum_raw_queries_raw_query_id - 1] = Int64GetDatum(getNextVal("plan_repo.raw_queries_raw_query_id_seq"));
+	isNulls[Anum_raw_queries_raw_query_id - 1] = false;
+	values[Anum_raw_queries_raw_query_string - 1] = CStringGetTextDatum(raw_query_string);
+	isNulls[Anum_raw_queries_raw_query_string - 1] = (raw_query_string == NULL) ? true : false;
+	values[Anum_raw_queries_timestamp - 1] = TimestampGetDatum(GetCurrentTimestamp());
+	isNulls[Anum_raw_queries_timestamp - 1] = false;
 
-  rel = heap_open(relationId, RowExclusiveLock);
-  if (rel == NULL)
-    return false;
-  tupleDescriptor = RelationGetDescr(rel);
-  heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
-  CatalogTupleInsert(rel, heapTuple);
-  CommandCounterIncrement();
-  heap_close(rel, NoLock);
+	rel = heap_open(relationId, RowExclusiveLock);
+	if (rel == NULL)
+		return false;
+	tupleDescriptor = RelationGetDescr(rel);
+	heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
+	CatalogTupleInsert(rel, heapTuple);
+	CommandCounterIncrement();
+	heap_close(rel, NoLock);
 
-  return true;
+	return true;
 }
 
 /*
@@ -454,48 +459,48 @@ insertRawQueries(const char *raw_query_hash, const char *raw_query_string)
 static void
 selectHints(const char *norm_query_string, const char *application_name, StringInfo prev_rows_hint)
 {
-  Relation rel = NULL;
-  Oid relationId = get_relname_relid("hints",
-				     LookupExplicitNamespace("hint_plan", true));
+	Relation	rel = NULL;
+	Oid			relationId = get_relname_relid("hints",
+											   LookupExplicitNamespace("hint_plan", true));
 
-  ScanKeyData scanKey[2];
-  SysScanDesc scanDescriptor = NULL;
+	ScanKeyData scanKey[2];
+	SysScanDesc scanDescriptor = NULL;
 
-  int scanKeyCount = 2;
-  bool indexOK = true;
-  HeapTuple heapTuple = NULL;
+	int			scanKeyCount = 2;
+	bool		indexOK = true;
+	HeapTuple	heapTuple = NULL;
 
-  if (relationId == InvalidOid)
-    return;
+	if (relationId == InvalidOid)
+		return;
 
-  rel = heap_open(relationId, AccessShareLock);
-  if (rel == NULL)
-    return;
+	rel = heap_open(relationId, AccessShareLock);
+	if (rel == NULL)
+		return;
 
-  ScanKeyInit(&scanKey[0], Anum_hints_norm_query_string,
-	      BTEqualStrategyNumber, F_TEXTEQ, CStringGetTextDatum(norm_query_string));
+	ScanKeyInit(&scanKey[0], Anum_hints_norm_query_string,
+				BTEqualStrategyNumber, F_TEXTEQ, CStringGetTextDatum(norm_query_string));
 
-  ScanKeyInit(&scanKey[1], Anum_hints_application_name,
-	      BTEqualStrategyNumber, F_TEXTEQ, CStringGetTextDatum(application_name));
-  scanDescriptor = systable_beginscan(rel,
-				      get_relname_relid("hints_norm_and_app",
-							LookupExplicitNamespace("hint_plan", true)),
-				      indexOK, NULL, scanKeyCount, scanKey);
-  heapTuple = systable_getnext(scanDescriptor);
-  while (HeapTupleIsValid(heapTuple))
-    {
-      TupleDesc tupleDescriptor = RelationGetDescr(rel);
-      bool isNullArray[Natts_hints];
-      Datum datumArray[Natts_hints];
+	ScanKeyInit(&scanKey[1], Anum_hints_application_name,
+				BTEqualStrategyNumber, F_TEXTEQ, CStringGetTextDatum(application_name));
+	scanDescriptor = systable_beginscan(rel,
+										get_relname_relid("hints_norm_and_app",
+														  LookupExplicitNamespace("hint_plan", true)),
+										indexOK, NULL, scanKeyCount, scanKey);
+	heapTuple = systable_getnext(scanDescriptor);
+	while (HeapTupleIsValid(heapTuple))
+	{
+		TupleDesc	tupleDescriptor = RelationGetDescr(rel);
+		bool		isNullArray[Natts_hints];
+		Datum		datumArray[Natts_hints];
 
-      heap_deform_tuple(heapTuple, tupleDescriptor, datumArray, isNullArray);
-      if (!isNullArray[Anum_hints_hints - 1])
-	  appendStringInfo(prev_rows_hint, "%s", TextDatumGetCString(datumArray[Anum_hints_hints - 1]));
-      heapTuple = systable_getnext(scanDescriptor);
-    }
+		heap_deform_tuple(heapTuple, tupleDescriptor, datumArray, isNullArray);
+		if (!isNullArray[Anum_hints_hints - 1])
+			appendStringInfo(prev_rows_hint, "%s", TextDatumGetCString(datumArray[Anum_hints_hints - 1]));
+		heapTuple = systable_getnext(scanDescriptor);
+	}
 
-  systable_endscan(scanDescriptor);
-  heap_close(rel, NoLock);
+	systable_endscan(scanDescriptor);
+	heap_close(rel, NoLock);
 
 }
 
@@ -505,49 +510,49 @@ selectHints(const char *norm_query_string, const char *application_name, StringI
 static bool
 deleteHints(const char *norm_query_string, const char *application_name)
 {
-  Relation rel = NULL;
-  Oid relationId = get_relname_relid("hints",
-				     LookupExplicitNamespace("hint_plan", true));
+	Relation	rel = NULL;
+	Oid			relationId = get_relname_relid("hints",
+											   LookupExplicitNamespace("hint_plan", true));
 
-  ScanKeyData scanKey[2];
-  SysScanDesc scanDescriptor = NULL;
+	ScanKeyData scanKey[2];
+	SysScanDesc scanDescriptor = NULL;
 
-  int scanKeyCount = 2;
-  bool indexOK = true;
-  HeapTuple heapTuple = NULL;
+	int			scanKeyCount = 2;
+	bool		indexOK = true;
+	HeapTuple	heapTuple = NULL;
 
-  if (relationId == InvalidOid)
-    return false;
+	if (relationId == InvalidOid)
+		return false;
 
-  rel = heap_open(relationId, AccessShareLock);
-  if (rel == NULL)
-    return false;
+	rel = heap_open(relationId, AccessShareLock);
+	if (rel == NULL)
+		return false;
 
-  ScanKeyInit(&scanKey[0], Anum_hints_norm_query_string,
-	      BTEqualStrategyNumber, F_TEXTEQ, CStringGetTextDatum(norm_query_string));
-  ScanKeyInit(&scanKey[1], Anum_hints_application_name,
-	      BTEqualStrategyNumber, F_TEXTEQ, CStringGetTextDatum(application_name));
-  scanDescriptor = systable_beginscan(rel,
-				      get_relname_relid("hints_norm_and_app",
-							LookupExplicitNamespace("hint_plan", true)),
-				      indexOK, NULL, scanKeyCount, scanKey);
-  heapTuple = systable_getnext(scanDescriptor);
-  while (HeapTupleIsValid(heapTuple))
-    {
-      TupleDesc tupleDescriptor = RelationGetDescr(rel);
-      bool isNullArray[Natts_hints];
-      Datum datumArray[Natts_hints];
+	ScanKeyInit(&scanKey[0], Anum_hints_norm_query_string,
+				BTEqualStrategyNumber, F_TEXTEQ, CStringGetTextDatum(norm_query_string));
+	ScanKeyInit(&scanKey[1], Anum_hints_application_name,
+				BTEqualStrategyNumber, F_TEXTEQ, CStringGetTextDatum(application_name));
+	scanDescriptor = systable_beginscan(rel,
+										get_relname_relid("hints_norm_and_app",
+														  LookupExplicitNamespace("hint_plan", true)),
+										indexOK, NULL, scanKeyCount, scanKey);
+	heapTuple = systable_getnext(scanDescriptor);
+	while (HeapTupleIsValid(heapTuple))
+	{
+		TupleDesc	tupleDescriptor = RelationGetDescr(rel);
+		bool		isNullArray[Natts_hints];
+		Datum		datumArray[Natts_hints];
 
-      heap_deform_tuple(heapTuple, tupleDescriptor, datumArray, isNullArray);
-      CatalogTupleDelete(rel, &heapTuple->t_self);
-      CommandCounterIncrement();
-      heapTuple = systable_getnext(scanDescriptor);
-    }
+		heap_deform_tuple(heapTuple, tupleDescriptor, datumArray, isNullArray);
+		CatalogTupleDelete(rel, &heapTuple->t_self);
+		CommandCounterIncrement();
+		heapTuple = systable_getnext(scanDescriptor);
+	}
 
-  systable_endscan(scanDescriptor);
-  heap_close(rel, NoLock);
+	systable_endscan(scanDescriptor);
+	heap_close(rel, NoLock);
 
-  return true;
+	return true;
 }
 
 /*
@@ -556,44 +561,45 @@ deleteHints(const char *norm_query_string, const char *application_name)
 static bool
 insertHints(const char *norm_query_string, const char *application_name, const char *hints)
 {
-  Relation rel = NULL;
-  TupleDesc tupleDescriptor = NULL;
-  HeapTuple heapTuple = NULL;
-  Datum values[Natts_hints];
-  bool isNulls[Natts_hints];
-  Oid relationId = get_relname_relid("hints", LookupExplicitNamespace("hint_plan", true));
+	Relation	rel = NULL;
+	TupleDesc	tupleDescriptor = NULL;
+	HeapTuple	heapTuple = NULL;
+	Datum		values[Natts_hints];
+	bool		isNulls[Natts_hints];
+	Oid			relationId = get_relname_relid("hints", LookupExplicitNamespace("hint_plan", true));
 
-  if (relationId == InvalidOid)
-    return false;
+	if (relationId == InvalidOid)
+		return false;
 
-  /* form new shard tuple */
-  memset(values, 0, sizeof(values));
-  memset(isNulls, false, sizeof(isNulls));
+	/* form new shard tuple */
+	memset(values, 0, sizeof(values));
+	memset(isNulls, false, sizeof(isNulls));
 
-  values[Anum_hints_id - 1] = Int64GetDatum(getNextVal("hint_plan.hints_id_seq"));
-  isNulls[Anum_hints_id - 1] = false;
-  values[Anum_hints_norm_query_string - 1] = CStringGetTextDatum(norm_query_string);
-  isNulls[Anum_hints_norm_query_string - 1] = (norm_query_string == NULL) ? true : false;
-  values[Anum_hints_application_name - 1] = CStringGetTextDatum(application_name);
-  isNulls[Anum_hints_application_name - 1] = (application_name == NULL) ? true : false;
-  values[Anum_hints_hints - 1] = CStringGetTextDatum(hints);
-  isNulls[Anum_hints_hints - 1] = (hints == NULL) ? true : false;
+	values[Anum_hints_id - 1] = Int64GetDatum(getNextVal("hint_plan.hints_id_seq"));
+	isNulls[Anum_hints_id - 1] = false;
+	values[Anum_hints_norm_query_string - 1] = CStringGetTextDatum(norm_query_string);
+	isNulls[Anum_hints_norm_query_string - 1] = (norm_query_string == NULL) ? true : false;
+	values[Anum_hints_application_name - 1] = CStringGetTextDatum(application_name);
+	isNulls[Anum_hints_application_name - 1] = (application_name == NULL) ? true : false;
+	values[Anum_hints_hints - 1] = CStringGetTextDatum(hints);
+	isNulls[Anum_hints_hints - 1] = (hints == NULL) ? true : false;
 
-  rel = heap_open(relationId, RowExclusiveLock);
-  if (rel == NULL)
-    return false;
-  tupleDescriptor = RelationGetDescr(rel);
-  heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
-  CatalogTupleInsert(rel, heapTuple);
-  CommandCounterIncrement();
-  heap_close(rel, NoLock);
+	rel = heap_open(relationId, RowExclusiveLock);
+	if (rel == NULL)
+		return false;
+	tupleDescriptor = RelationGetDescr(rel);
+	heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
+	CatalogTupleInsert(rel, heapTuple);
+	CommandCounterIncrement();
+	heap_close(rel, NoLock);
 
-  return true;
+	return true;
 }
 
 
 /* Install hooks */
-void _PG_init(void)
+void
+_PG_init(void)
 {
 	prev_post_parse_analyze_hook = post_parse_analyze_hook;
 	post_parse_analyze_hook = pg_plan_advsr_post_parse_analyze_hook;
@@ -609,7 +615,7 @@ void _PG_init(void)
 
 	prev_ExecutorFinish_hook = ExecutorFinish_hook;
 	ExecutorFinish_hook = pg_plan_advsr_ExecutorFinish_hook;
-	
+
 	prev_ExecutorEnd_hook = ExecutorEnd_hook;
 	ExecutorEnd_hook = pg_plan_advsr_ExecutorEnd_hook;
 
@@ -637,7 +643,8 @@ void _PG_init(void)
 }
 
 /* Uninstall hooks. */
-void _PG_fini(void)
+void
+_PG_fini(void)
 {
 	post_parse_analyze_hook = prev_post_parse_analyze_hook;
 	ProcessUtility_hook = prev_ProcessUtility_hook;
@@ -661,21 +668,21 @@ pg_plan_advsr_enable_feedback(PG_FUNCTION_ARGS)
 	elog(DEBUG3, "execute pg_plan_advsr_enable_feedback");
 
 	(void) set_config_option("pg_plan_advsr.enabled", "ON",
-							  PGC_USERSET, PGC_S_OVERRIDE,
-							  GUC_ACTION_SAVE, true, 0, false);
+							 PGC_USERSET, PGC_S_OVERRIDE,
+							 GUC_ACTION_SAVE, true, 0, false);
 
 	(void) set_config_option("pg_hint_plan.enable_hint_table", "ON",
-							  PGC_USERSET, PGC_S_OVERRIDE,
-							  GUC_ACTION_SAVE, true, 0, false);
+							 PGC_USERSET, PGC_S_OVERRIDE,
+							 GUC_ACTION_SAVE, true, 0, false);
 
 	(void) set_config_option("pg_hint_plan.debug_print", "ON",
-							  PGC_USERSET, PGC_S_OVERRIDE,
-							  GUC_ACTION_SAVE, true, 0, false);
+							 PGC_USERSET, PGC_S_OVERRIDE,
+							 GUC_ACTION_SAVE, true, 0, false);
 	PG_RETURN_VOID();
 }
 
-/* 
- * Disable feedback loop 
+/*
+ * Disable feedback loop
  */
 Datum
 pg_plan_advsr_disable_feedback(PG_FUNCTION_ARGS)
@@ -683,16 +690,16 @@ pg_plan_advsr_disable_feedback(PG_FUNCTION_ARGS)
 	elog(DEBUG3, "execute pg_plan_advsr_disable_feedback");
 
 	(void) set_config_option("pg_plan_advsr.enabled", "ON",
-							  PGC_USERSET, PGC_S_OVERRIDE,
-							  GUC_ACTION_SAVE, true, 0, false);
+							 PGC_USERSET, PGC_S_OVERRIDE,
+							 GUC_ACTION_SAVE, true, 0, false);
 
 	(void) set_config_option("pg_hint_plan.enable_hint_table", "OFF",
-							  PGC_USERSET, PGC_S_OVERRIDE,
-							  GUC_ACTION_SAVE, true, 0, false);
+							 PGC_USERSET, PGC_S_OVERRIDE,
+							 GUC_ACTION_SAVE, true, 0, false);
 
 	(void) set_config_option("pg_hint_plan.debug_print", "OFF",
-							  PGC_USERSET, PGC_S_OVERRIDE,
-							  GUC_ACTION_SAVE, true, 0, false);
+							 PGC_USERSET, PGC_S_OVERRIDE,
+							 GUC_ACTION_SAVE, true, 0, false);
 	PG_RETURN_VOID();
 }
 
@@ -709,19 +716,20 @@ pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query)
 	/* Create normalized query for later use */
 	if (pg_plan_advsr_is_enabled)
 	{
-		int				query_len;
-		pgssJumbleState	jstate;
-		Query		   *jumblequery;
-/*
-elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook start ##");
-*/
+		int			query_len;
+		pgssJumbleState jstate;
+		Query	   *jumblequery;
+
+		/*
+		 * elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook start ##");
+		 */
 		query_str = get_query_string(pstate, query, &jumblequery);
 
 		if (query_str && jumblequery)
 		{
 			/*
-			 * XXX: normalizing code is copied from pg_stat_statements.c, so be
-			 * careful to PostgreSQL's version up.
+			 * XXX: normalizing code is copied from pg_stat_statements.c, so
+			 * be careful to PostgreSQL's version up.
 			 */
 			jstate.jumble = (unsigned char *) palloc(JUMBLE_SIZE);
 			jstate.jumble_len = 0;
@@ -735,9 +743,10 @@ elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook start ##");
 			/*
 			 * Normalize the query string by replacing constants with '?'
 			 */
+
 			/*
-			 * Search hint string which is stored keyed by query string
-			 * and application name.  The query string is normalized to allow
+			 * Search hint string which is stored keyed by query string and
+			 * application name.  The query string is normalized to allow
 			 * fuzzy matching.
 			 *
 			 * Adding 1 byte to query_len ensures that the returned string has
@@ -751,9 +760,10 @@ elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook start ##");
 										  GetDatabaseEncoding());
 
 		}
-/*
-elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook end ##");
-*/
+
+		/*
+		 * elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook end ##");
+		 */
 	}
 }
 
@@ -762,13 +772,14 @@ elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook end ##");
  * This function setup the "isExplain" flag.
  * If this flag is true, we can create hints for given query.
  */
-static void pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
-											  const char *queryString,
-											  ProcessUtilityContext context,
-											  ParamListInfo params,
-											  QueryEnvironment *queryEnv,
-											  DestReceiver *dest,
-											  char *completionTag)
+static void
+pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
+								  const char *queryString,
+								  ProcessUtilityContext context,
+								  ParamListInfo params,
+								  QueryEnvironment *queryEnv,
+								  DestReceiver *dest,
+								  char *completionTag)
 {
 	isExplain = query_or_expression_tree_walker((Node *) pstmt,
 												pg_plan_advsr_query_walker,
@@ -782,7 +793,7 @@ static void pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 								 context,
 								 params,
 								 queryEnv,
-								 dest, 
+								 dest,
 								 completionTag);
 	else
 		standard_ProcessUtility(
@@ -791,7 +802,7 @@ static void pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 								context,
 								params,
 								queryEnv,
-								dest, 
+								dest,
 								completionTag);
 }
 
@@ -802,24 +813,14 @@ static void pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 static void
 pg_plan_advsr_ExecutorStart_hook(QueryDesc *queryDesc, int eflags)
 {
-/*
-	if (log_analyze &&
-		(eflags & EXEC_FLAG_EXPLAIN_ONLY) == 0)
-	{
-		queryDesc->instrument_options |=
-			(log_timing ? INSTRUMENT_TIMER : 0)|
-			(log_timing ? 0: INSTRUMENT_ROWS)|
-			(log_buffers ? INSTRUMENT_BUFFERS : 0);
-	}
-*/
 	if (prev_ExecutorStart_hook)
 		prev_ExecutorStart_hook(queryDesc, eflags);
 	else
 		standard_ExecutorStart(queryDesc, eflags);
 
 	/*
-	 * Set up to track total elapsed time in ExecutorRun. Allocate in per-query
-	 * context so as to be free at ExecutorEnd.
+	 * Set up to track total elapsed time in ExecutorRun. Allocate in
+	 * per-query context so as to be free at ExecutorEnd.
 	 */
 	if (queryDesc->totaltime == NULL && (nested_level == 0))
 	{
@@ -829,7 +830,7 @@ pg_plan_advsr_ExecutorStart_hook(QueryDesc *queryDesc, int eflags)
 		queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_ALL);
 		MemoryContextSwitchTo(oldcxt);
 	}
-	
+
 }
 
 /*
@@ -837,7 +838,7 @@ pg_plan_advsr_ExecutorStart_hook(QueryDesc *queryDesc, int eflags)
  */
 static void
 pg_plan_advsr_ExecutorRun_hook(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
-				 bool execute_once)
+							   bool execute_once)
 {
 	nested_level++;
 	PG_TRY();
@@ -880,17 +881,18 @@ pg_plan_advsr_ExecutorFinish_hook(QueryDesc *queryDesc)
 }
 
 /*
- * ExecutorEnd_hook: create hints by using PlannedStmt or ExplainState and output it.
+ * ExecutorEnd_hook: create hints by using PlannedStmt or ExplainState, and output it.
  */
-static void pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
+static void
+pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
 {
 	ExplainState *hs;
 
-	if(queryDesc->totaltime)
+	if (queryDesc->totaltime)
 		InstrEndLoop(queryDesc->totaltime);
 
 	elog(DEBUG1, "isExplain: %d", isExplain);
-	if(isExplain && pg_plan_advsr_is_enabled)
+	if (isExplain && pg_plan_advsr_is_enabled)
 	{
 		elog(DEBUG1, "## pg_plan_advsr_ExecutorEnd start ##");
 
@@ -899,9 +901,9 @@ static void pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
 		hs->analyze = true;
 		hs->verbose = true;
 		hs->buffers = false;
-		hs->timing  = false;
+		hs->timing = false;
 		hs->summary = hs->analyze;
-		hs->format  = EXPLAIN_FORMAT_JSON;
+		hs->format = EXPLAIN_FORMAT_JSON;
 
 		pg_plan_advsr_ExplainPrintPlan(hs, queryDesc);
 
@@ -911,8 +913,8 @@ static void pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
 
 	/* initialize */
 	isExplain = false;
-	
-	if(prev_ExecutorEnd_hook)
+
+	if (prev_ExecutorEnd_hook)
 		prev_ExecutorEnd_hook(queryDesc);
 	else
 		standard_ExecutorEnd(queryDesc);
@@ -922,46 +924,51 @@ static void pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
  * Create pg_store_plans's planid
  * This function is inspired store_entry() and pgsp_ExecutorEnd() in pg_store_plans 1.1.
  */
-uint32 create_pgsp_planid(QueryDesc *queryDesc)
+uint32
+create_pgsp_planid(QueryDesc *queryDesc)
 {
-	ExplainState *es     = NewExplainState();
-	StringInfo    es_str = es->str;
-	bool log_verbose = false;
-	bool log_buffers = false;
-	bool log_timing  = false; 
-	bool log_triggers = false;
-	char       *normalized_plan = NULL;
-	uint32      planid;         /* plan identifier */
+	ExplainState *es = NewExplainState();
+	StringInfo	es_str = es->str;
+	bool		log_verbose = false;
+	bool		log_buffers = false;
+	bool		log_timing = false;
+	bool		log_triggers = false;
+	char	   *normalized_plan = NULL;
+	uint32		planid;			/* plan identifier */
 
 	/* get the current values of pg_store_plans setting */
 	/* GetConfigOptionByName("pg_store_plans.log_analyze", NULL, false); */
-	if(strcmp(GetConfigOptionByName("pg_store_plans.log_verbose", NULL, false), "on") == 0)
+	if (strcmp(GetConfigOptionByName("pg_store_plans.log_verbose", NULL, false), "on") == 0)
 		log_verbose = true;
-	if(strcmp(GetConfigOptionByName("pg_store_plans.log_buffers", NULL, false), "on") == 0)
+	if (strcmp(GetConfigOptionByName("pg_store_plans.log_buffers", NULL, false), "on") == 0)
 		log_buffers = true;
-	if(strcmp(GetConfigOptionByName("pg_store_plans.log_timing",  NULL, false), "on") == 0)
+	if (strcmp(GetConfigOptionByName("pg_store_plans.log_timing", NULL, false), "on") == 0)
 		log_timing = true;
-	if(strcmp(GetConfigOptionByName("pg_store_plans.log_triggers",NULL, false), "on") == 0) 
+	if (strcmp(GetConfigOptionByName("pg_store_plans.log_triggers", NULL, false), "on") == 0)
 		log_triggers = true;
-	
-	/* elog(INFO, "pg_store_plans.log_analyze: %s", GetConfigOptionByName("pg_store_plans.log_analyze", NULL, false)); */
+
+	/*
+	 * elog(INFO, "pg_store_plans.log_analyze: %s",
+	 * GetConfigOptionByName("pg_store_plans.log_analyze", NULL, false));
+	 */
 	elog(DEBUG1, "pg_store_plans.log_verbose : %s", log_verbose ? "on" : "off");
 	elog(DEBUG1, "pg_store_plans.log_buffers : %s", log_buffers ? "on" : "off");
-	elog(DEBUG1, "pg_store_plans.log_timing  : %s", log_timing  ? "on" : "off");
-	elog(DEBUG1, "pg_store_plans.log_triggers: %s", log_triggers? "on" : "off");
+	elog(DEBUG1, "pg_store_plans.log_timing  : %s", log_timing ? "on" : "off");
+	elog(DEBUG1, "pg_store_plans.log_triggers: %s", log_triggers ? "on" : "off");
 
 	es->analyze = queryDesc->instrument_options;
 	es->verbose = log_verbose;
 	es->buffers = (es->analyze && log_buffers);
-	es->timing  = (es->analyze && log_timing);
-	es->format  = EXPLAIN_FORMAT_JSON;
+	es->timing = (es->analyze && log_timing);
+	es->format = EXPLAIN_FORMAT_JSON;
 
 	ExplainBeginOutput(es);
 	ExplainPrintPlan(es, queryDesc);
 	/* Trigger is not supported */
-	/*
+	/*----
 	if (log_triggers)
 		pgspExplainTriggers(es, queryDesc);
+	*----
 	*/
 	ExplainEndOutput(es);
 
@@ -975,8 +982,8 @@ uint32 create_pgsp_planid(QueryDesc *queryDesc)
 
 	/* es_str->data is a Plan formatted Json */
 	normalized_plan = pgsp_json_normalize(es_str->data);
-	planid = hash_any((const unsigned char *)normalized_plan,
-						strlen(normalized_plan));
+	planid = hash_any((const unsigned char *) normalized_plan,
+					  strlen(normalized_plan));
 	elog(DEBUG3, "normalized_plan: %s", normalized_plan);
 	pfree(normalized_plan);
 
@@ -986,13 +993,14 @@ uint32 create_pgsp_planid(QueryDesc *queryDesc)
 
 /* This function cames from pg_store_plans 1.1. */
 static uint32
-hash_query(const char* query)
+hash_query(const char *query)
 {
-	uint32 queryid;
+	uint32		queryid;
 
-	char *normquery = pstrdup(query);
+	char	   *normquery = pstrdup(query);
+
 	normalize_expr(normquery, false);
-	queryid = hash_any((const unsigned char*)normquery, strlen(normquery));
+	queryid = hash_any((const unsigned char *) normquery, strlen(normquery));
 	pfree(normquery);
 
 	return queryid;
@@ -1061,41 +1069,18 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 
 	if (query->commandType == CMD_UTILITY)
 	{
-		Query *target_query = (Query *)query->utilityStmt;
+		Query	   *target_query = (Query *) query->utilityStmt;
 
 		/*
 		 * Some CMD_UTILITY statements have a subquery that we can hint on.
 		 * Since EXPLAIN can be placed before other kind of utility statements
-		 * and EXECUTE can be contained other kind of utility statements, these
-		 * conditions are not mutually exclusive and should be considered in
-		 * this order.
+		 * and EXECUTE can be contained other kind of utility statements,
+		 * these conditions are not mutually exclusive and should be
+		 * considered in this order.
 		 */
 		if (IsA(target_query, ExplainStmt))
 		{
-			ExplainStmt *stmt = (ExplainStmt *)target_query;
-			
-			Assert(IsA(stmt->query, Query));
-			target_query = (Query *)stmt->query;
-
-			/* strip out the top-level query for further processing */
-			if (target_query->commandType == CMD_UTILITY &&
-				target_query->utilityStmt != NULL)
-				target_query = (Query *)target_query->utilityStmt;
-		}
-
-		if (IsA(target_query, DeclareCursorStmt))
-		{
-			DeclareCursorStmt *stmt = (DeclareCursorStmt *)target_query;
-			Query *query = (Query *)stmt->query;
-
-			/* the target must be CMD_SELECT in this case */
-			Assert(IsA(query, Query) && query->commandType == CMD_SELECT);
-			target_query = query;
-		}
-
-		if (IsA(target_query, CreateTableAsStmt))
-		{
-			CreateTableAsStmt  *stmt = (CreateTableAsStmt *) target_query;
+			ExplainStmt *stmt = (ExplainStmt *) target_query;
 
 			Assert(IsA(stmt->query, Query));
 			target_query = (Query *) stmt->query;
@@ -1103,23 +1088,46 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 			/* strip out the top-level query for further processing */
 			if (target_query->commandType == CMD_UTILITY &&
 				target_query->utilityStmt != NULL)
-				target_query = (Query *)target_query->utilityStmt;
+				target_query = (Query *) target_query->utilityStmt;
+		}
+
+		if (IsA(target_query, DeclareCursorStmt))
+		{
+			DeclareCursorStmt *stmt = (DeclareCursorStmt *) target_query;
+			Query	   *query = (Query *) stmt->query;
+
+			/* the target must be CMD_SELECT in this case */
+			Assert(IsA(query, Query) &&query->commandType == CMD_SELECT);
+			target_query = query;
+		}
+
+		if (IsA(target_query, CreateTableAsStmt))
+		{
+			CreateTableAsStmt *stmt = (CreateTableAsStmt *) target_query;
+
+			Assert(IsA(stmt->query, Query));
+			target_query = (Query *) stmt->query;
+
+			/* strip out the top-level query for further processing */
+			if (target_query->commandType == CMD_UTILITY &&
+				target_query->utilityStmt != NULL)
+				target_query = (Query *) target_query->utilityStmt;
 		}
 
 		if (IsA(target_query, ExecuteStmt))
 		{
 			/*
-			 * Use the prepared query for EXECUTE. The Query for jumble
-			 * also replaced with the corresponding one.
+			 * Use the prepared query for EXECUTE. The Query for jumble also
+			 * replaced with the corresponding one.
 			 */
-			ExecuteStmt *stmt = (ExecuteStmt *)target_query;
-			PreparedStatement  *entry;
+			ExecuteStmt *stmt = (ExecuteStmt *) target_query;
+			PreparedStatement *entry;
 
 			entry = FetchPreparedStatement(stmt->name, true);
 			p = entry->plansource->query_string;
-			target_query = (Query *) linitial (entry->plansource->query_list);
+			target_query = (Query *) linitial(entry->plansource->query_list);
 		}
-			
+
 		/* JumbleQuery accespts only a non-utility Query */
 		if (!IsA(target_query, Query) ||
 			target_query->utilityStmt != NULL)
@@ -1135,7 +1143,7 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 	return p;
 }
 
-/*  
+/*
  * pg_plan_advsr_planstate_tree_walker, pg_plan_advsr_planstate_walk_subplans and
  * pg_plan_advsr_planstate_walk_members came from src/backend/nodes/nodeFuncs.c
  */
@@ -1167,11 +1175,12 @@ pg_plan_advsr_planstate_tree_walker(PlanState *planstate,
 			return true;
 	}
 
-	/* Todo: 
-			investigate thease node whether it is needed for creating hints or not.
-	*/
-	/* special child plans */
 	/*
+	 * Todo: investigate these node whether it is needed for creating hints or
+	 * not.
+	 */
+	/* special child plans */
+	/*----
 	Plan	   *plan = planstate->plan;
 
 	switch (nodeTag(plan))
@@ -1220,12 +1229,14 @@ pg_plan_advsr_planstate_tree_walker(PlanState *planstate,
 		default:
 			break;
 	}
+	*----
 	*/
 
 	/* subPlan-s */
-	/*
+	/*----
 	if (planstate_walk_subplans(planstate->subPlan, walker, context))
 		return true;
+	*----
 	*/
 
 	return false;
@@ -1276,16 +1287,17 @@ pg_plan_advsr_planstate_walk_members(List *plans, PlanState **planstates,
 }
 
 /* return relnames */
-char *get_relnames(ExplainState *es, Relids relids)
+char *
+get_relnames(ExplainState *es, Relids relids)
 {
-	int x;
-	int first = true;
-	StringInfo relnames = makeStringInfo();
+	int			x;
+	int			first = true;
+	StringInfo	relnames = makeStringInfo();
 
 	x = -1;
 	while ((x = bms_next_member(relids, x)) >= 0)
 	{
-		if(!first)
+		if (!first)
 			appendStringInfo(relnames, " %s", get_target_relname(x, es));
 		else
 			appendStringInfo(relnames, "%s", get_target_relname(x, es));
@@ -1306,7 +1318,7 @@ char *get_relnames(ExplainState *es, Relids relids)
 bool
 ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 {
-	Plan	*plan = planstate->plan;
+	Plan	   *plan = planstate->plan;
 
 	switch (nodeTag(plan))
 	{
@@ -1324,7 +1336,7 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 		case T_NamedTuplestoreScan:
 		case T_WorkTableScan:
 			*rels_used = bms_add_member(*rels_used,
-										 ((Scan *) plan)->scanrelid);
+										((Scan *) plan)->scanrelid);
 			break;
 		case T_ForeignScan:
 			*rels_used = bms_add_members(*rels_used,
@@ -1336,7 +1348,7 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 			break;
 		case T_ModifyTable:
 			*rels_used = bms_add_member(*rels_used,
-										 ((ModifyTable *) plan)->nominalRelation);
+										((ModifyTable *) plan)->nominalRelation);
 			if (((ModifyTable *) plan)->exclRelRTI)
 				*rels_used = bms_add_member(*rels_used,
 											((ModifyTable *) plan)->exclRelRTI);
@@ -1350,12 +1362,12 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 
 /* For creating Leading hint */
 bool
-CreateLeadingHint(PlanState *planstate, LeadingContext *lead)
+CreateLeadingHint(PlanState *planstate, LeadingContext * lead)
 {
-	Plan	*plan = planstate->plan;
+	Plan	   *plan = planstate->plan;
 
-	/* skip initPlans and subPlans*/
-	if(planstate->initPlan || planstate->subPlan)
+	/* skip initPlans and subPlans */
+	if (planstate->initPlan || planstate->subPlan)
 		return false;
 
 	switch (nodeTag(plan))
@@ -1416,7 +1428,7 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 {
 	Bitmapset  *rels_used = NULL;
 	PlanState  *ps;
-	double totaltime;
+	double		totaltime;
 
 	total_diff_rows = 0;
 
@@ -1460,7 +1472,7 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 	pgsp_planid = create_pgsp_planid(queryDesc);
 	totaltime = queryDesc->totaltime ? queryDesc->totaltime->total * 1000.0 : 0;
 
-	if ( ! pg_plan_advsr_is_quieted )
+	if (!pg_plan_advsr_is_quieted)
 	{
 		elog(INFO, "---- pgsp_queryid ----------------\n\t\t%u", pgsp_queryid);
 		elog(INFO, "---- pgsp_planid -----------------\n\t\t%u", pgsp_planid);
@@ -1475,12 +1487,13 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 	}
 
 	/* store above data to tables */
-	/* 
-		ToDo: 
+	/*----
+		ToDo:
 				- Execute these queries in one transaction
 				- Use Prepared Statement
 				- Avoid "Not found table error"
-	*/
+	 *----
+	 */
 	store_info_to_tables(totaltime, queryDesc->sourceText);
 
 	/* initialize */
@@ -1491,63 +1504,64 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 /*
  * Store query, hints and diffs to tables
  *
- * 
+ *
  */
-void store_info_to_tables(double totaltime, const char *sourcetext)
+void
+store_info_to_tables(double totaltime, const char *sourcetext)
 {
-	char md5[33];
-	char *aplname;
-	StringInfo sql;
-	StringInfo del_sql;
-	StringInfo prev_rows_hint;
-	StringInfo new_hint;
+	char		md5[33];
+	char	   *aplname;
+	StringInfo	sql;
+	StringInfo	del_sql;
+	StringInfo	prev_rows_hint;
+	StringInfo	new_hint;
 
-	char *before = "'";
-	char *after  = "\'\'";
-	char *output;
+	char	   *before = "'";
+	char	   *after = "\'\'";
+	char	   *output;
 
 	/*
-	 * Calculate MD5 hash of the normalized query as a norm_query_hash 
+	 * Calculate MD5 hash of the normalized query as a norm_query_hash
 	 */
-	if (! pg_md5_hash(normalized_query, strlen(normalized_query), md5))
+	if (!pg_md5_hash(normalized_query, strlen(normalized_query), md5))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				errmsg("pg_md5_hash: out of memory")));
+				 errmsg("pg_md5_hash: out of memory")));
 	}
 
 	/* get application_name */
 	aplname = GetConfigOptionByName("application_name", NULL, false);
-	if ( ! pg_plan_advsr_is_quieted )
+	if (!pg_plan_advsr_is_quieted)
 		elog(INFO, "---- Application name-------------\n\t\t%s", aplname);
 
 	/* insert totaltime and hints to plan_repo.plan_history */
 	if (insertPlanHistory(md5, pgsp_queryid, pgsp_planid, totaltime,
-			      rows_str->data, scan_str->data, join_str->data,
-			      leadcxt->lead_str->data, total_diff_rows /* diff of joins */,
-			      join_cnt, aplname))
-	  elog(DEBUG3, "\ninsert success: plan_history\n");
+						  rows_str->data, scan_str->data, join_str->data,
+						  leadcxt->lead_str->data, total_diff_rows /* diff of joins */ ,
+						  join_cnt, aplname))
+		elog(DEBUG3, "\ninsert success: plan_history\n");
 	else
-	  elog(INFO, "\ninsert error: plan_history\n");
+		elog(INFO, "\ninsert error: plan_history\n");
 
 	/* insert queryhash and normalized query text to plan_repo.norm_queries */
 	if (insertNormQueries(md5, normalized_query))
-	  elog(DEBUG3, "\ninsert success: norm_queries\n");
+		elog(DEBUG3, "\ninsert success: norm_queries\n");
 	else
-	  elog(INFO, "\ninsert error: norm_queries\n");
+		elog(INFO, "\ninsert error: norm_queries\n");
 
 	/* insert queryhash and raw query text to plan_repo.raw_queries */
 	/* should be replaced "'" to "''" in sql */
-	output = (char *)palloc((int)strlen(sourcetext) * 1.5);
+	output = (char *) palloc((int) strlen(sourcetext) * 1.5);
 	strcpy(output, sourcetext);
 	elog(DEBUG3, "output(before): %s", output);
 	replaceAll(output, before, after);
 	elog(DEBUG3, "output(after): %s", output);
 
 	if (insertRawQueries(md5, output))
-	  elog(DEBUG3, "\ninsert success: raw_queries\n");
+		elog(DEBUG3, "\ninsert success: raw_queries\n");
 	else
-	  elog(INFO, "\ninsert error: raw_queries\n");
+		elog(INFO, "\ninsert error: raw_queries\n");
 	pfree(output);
 
 	/* upsert hints to hint_plan.hints */
@@ -1557,28 +1571,28 @@ void store_info_to_tables(double totaltime, const char *sourcetext)
 	new_hint = makeStringInfo();
 
 	selectHints(normalized_query, aplname, prev_rows_hint);
-	
-	if (prev_rows_hint)
-	  {
-	    /* delete previous rows_hint */
-	    if (deleteHints(normalized_query, aplname))
-	      elog(DEBUG3, "\ndelete success: hint_plan.hints\n");
-	    else
-	      elog(INFO, "\ndelete error: hint_plan.hints\n");
 
-	    /* create new rows_hint */
-	    appendStringInfo(new_hint, "%s %s", prev_rows_hint->data, rows_str->data);
-	  }
+	if (prev_rows_hint)
+	{
+		/* delete previous rows_hint */
+		if (deleteHints(normalized_query, aplname))
+			elog(DEBUG3, "\ndelete success: hint_plan.hints\n");
+		else
+			elog(INFO, "\ndelete error: hint_plan.hints\n");
+
+		/* create new rows_hint */
+		appendStringInfo(new_hint, "%s %s", prev_rows_hint->data, rows_str->data);
+	}
 	else
-	  {
-	    appendStringInfo(new_hint, "%s", rows_str->data);
-	  }
+	{
+		appendStringInfo(new_hint, "%s", rows_str->data);
+	}
 
 	/* insert new rows_hint to table for auto tune */
 	if (insertHints(normalized_query, aplname, new_hint->data))
-	  elog(DEBUG3, "\ninsert success: hint_plan.hints\n");
+		elog(DEBUG3, "\ninsert success: hint_plan.hints\n");
 	else
-	  elog(INFO, "\ninsert error: hint_plan.hints\n");
+		elog(INFO, "\ninsert error: hint_plan.hints\n");
 }
 
 
@@ -1589,7 +1603,7 @@ char *
 get_target_relname(Index rti, ExplainState *es)
 {
 	RangeTblEntry *rte;
-	char		  *refname;
+	char	   *refname;
 
 	elog(DEBUG1, "    #get_target_relname#");
 
@@ -1602,7 +1616,7 @@ get_target_relname(Index rti, ExplainState *es)
 }
 
 
-/* 
+/*
  * Create scan, join and rows hints.
  * This function is based on ExplainNode in explain.c
  */
@@ -1623,43 +1637,42 @@ get_target_relname(Index rti, ExplainState *es)
  */
 void
 CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
-			const char *relationship, const char *plan_name,
-			ExplainState *es)
+						const char *relationship, const char *plan_name,
+						ExplainState *es)
 {
 	Plan	   *plan = planstate->plan;
-	/*
-	const char *strategy = NULL;
-	const char *partialmode = NULL;
-	const char *operation = NULL;
-	const char *custom_name = NULL;
-	*/
 	bool		haschildren;
+	double		nloops;
+	double		rows;
+	StringInfo	tmp_relnames = makeStringInfo();
 
-elog(DEBUG1, "### CreateScanJoinRowsHints ###");
-elog(DEBUG1, "    Parent Relationship: %s", relationship);
+	elog(DEBUG1, "### CreateScanJoinRowsHints ###");
+	elog(DEBUG1, "    Parent Relationship: %s", relationship);
 
 
 	/* Remove initPlan-s such as CTE */
 	if (planstate->initPlan)
 	{
-		if ( ! pg_plan_advsr_is_quieted )
+		if (!pg_plan_advsr_is_quieted)
 			elog(INFO, "---- InitPlan -----------------");
 		/* Remove it for leading hint */
 		planstate->initPlan = NULL;
+
 		/*
-		pg_plan_advsr_ExplainSubPlans(planstate->initPlan, ancestors, "InitPlan", es);
-		*/
-		if ( ! pg_plan_advsr_is_quieted )
+		 * pg_plan_advsr_ExplainSubPlans(planstate->initPlan, ancestors,
+		 * "InitPlan", es);
+		 */
+		if (!pg_plan_advsr_is_quieted)
 			elog(INFO, "-------------------------------");
 	}
 
 	/* Also remove subPlan-s */
-	if (planstate->subPlan)	
+	if (planstate->subPlan)
 	{
-		if ( ! pg_plan_advsr_is_quieted )
+		if (!pg_plan_advsr_is_quieted)
 			elog(INFO, "---- SubPlan ------------------");
 		planstate->subPlan = NULL;
-		if ( ! pg_plan_advsr_is_quieted )
+		if (!pg_plan_advsr_is_quieted)
 			elog(INFO, "-------------------------------");
 	}
 
@@ -1686,20 +1699,23 @@ elog(DEBUG1, "    Parent Relationship: %s", relationship);
 		case T_IndexScan:
 			{
 				IndexScan  *indexscan = (IndexScan *) plan;
+
 				pg_plan_advsr_ExplainScanTarget((Scan *) indexscan, es);
 			}
 			break;
 		case T_IndexOnlyScan:
 			{
 				IndexOnlyScan *indexonlyscan = (IndexOnlyScan *) plan;
+
 				pg_plan_advsr_ExplainScanTarget((Scan *) indexonlyscan, es);
 			}
 			break;
 		case T_BitmapIndexScan:
 			{
-				/*
-				BitmapIndexScan *bitmapindexscan = (BitmapIndexScan *) plan;
-				*/
+				/*----
+				  BitmapIndexScan *bitmapindexscan = (BitmapIndexScan *) plan;
+				 *----
+				 */
 			}
 			break;
 		case T_ModifyTable:
@@ -1725,144 +1741,67 @@ elog(DEBUG1, "    Parent Relationship: %s", relationship);
 	if (planstate->instrument)
 		InstrEndLoop(planstate->instrument);
 
-	if (es->analyze &&
-		planstate->instrument && planstate->instrument->nloops > 0)
+	if (planstate->instrument)
 	{
-		double		nloops = planstate->instrument->nloops;
-/*
-		double		startup_sec = 1000.0 * planstate->instrument->startup / nloops;
-		double		total_sec = 1000.0 * planstate->instrument->total / nloops;
-*/
-		double		rows = planstate->instrument->ntuples / nloops; /* actual rows */
+		/* EXPLAIN ANALYZE */
+		nloops = planstate->instrument->nloops;
+		rows = planstate->instrument->ntuples / nloops; /* actual rows */
+	}
+	else
+	{
+		/* EXPLAIN */
+		rows = -1;
+	}
 
-		/* 
-		 * Create join and rows hints.
-		 * In this current design, we use actual rows number as a rows hint.
-		 */
-		StringInfo tmp_relnames = makeStringInfo();
-		switch(nodeTag(plan))
-		{
-			case T_NestLoop:
+	/*
+	 * Create join and rows hints. In this current design, we use actual rows
+	 * number as a rows hint.
+	 */
+	switch (nodeTag(plan))
+	{
+		case T_NestLoop:
+		case T_MergeJoin:
+		case T_HashJoin:
+			{
+				Bitmapset  *relids = NULL;
+
+				ExplainPreScanNode(planstate, &relids);
+				tmp_relnames->data = get_relnames(es, relids);
+
+				if (join_cnt > 0)
+					appendStringInfo(join_str, "\n");
+
+				if (nodeTag(plan) == T_NestLoop)
+					appendStringInfo(join_str, "%s", "NESTLOOP");
+				else if (nodeTag(plan) == T_MergeJoin)
+					appendStringInfo(join_str, "%s", "MERGEJOIN");
+				else if (nodeTag(plan) == T_HashJoin)
+					appendStringInfo(join_str, "%s", "HASHJOIN");
+
+				appendStringInfo(join_str, "(%s) ", tmp_relnames->data);
+				join_cnt++;
+
+				est_rows = ((Plan *) planstate->plan)->plan_rows;	/* estimated rows */
+				act_rows = rows == -1 ? est_rows : rows;
+				diff_rows = act_rows - est_rows;	/* diff rows = actual rows
+													 * - estimated rows */
+
+				if (est_rows != act_rows)
 				{
-					Bitmapset  *relids = NULL;
-					ExplainPreScanNode(planstate, &relids);
-					tmp_relnames->data = get_relnames(es, relids);
-
-					if (join_cnt > 0)
-						appendStringInfo(join_str, "\n");
-					appendStringInfo(join_str, "NESTLOOP(%s) ", tmp_relnames->data);
-					join_cnt++;
-
-					act_rows = rows;
-					est_rows = ((Plan *)planstate->plan)->plan_rows; /* estimated rows */
-					diff_rows = act_rows - est_rows; /* diff rows = actual rows - estimated rows */
-					/*
-					if(diff_rows > 0)
-					{
-						appendStringInfo(rows_str, "ROWS(%s +%.0f) ", tmp_relnames->data, diff_rows);
-					}
-					else if(diff_rows < 0)
-					{
-						appendStringInfo(rows_str, "ROWS(%s %.0f) ", tmp_relnames->data, diff_rows);
-					}
-					*/
-
-					if(est_rows != act_rows)
-					{
-						if (rows_cnt > 0)
-							appendStringInfo(rows_str, "\n");
-						appendStringInfo(rows_str, "ROWS(%s #%.0f) ", tmp_relnames->data, act_rows);
-						rows_cnt++;
-					}
-
-					if(diff_rows < 0)
-						diff_rows = diff_rows * -1.0;
-					elog(DEBUG3, "join diff_rows: %.0f", diff_rows);
-					total_diff_rows = total_diff_rows + diff_rows;
+					if (rows_cnt > 0)
+						appendStringInfo(rows_str, "\n");
+					appendStringInfo(rows_str, "ROWS(%s #%.0f) ", tmp_relnames->data, act_rows);
+					rows_cnt++;
 				}
-				break;
-			case T_MergeJoin:
-				{
-					Bitmapset  *relids = NULL;
-					ExplainPreScanNode(planstate, &relids);
-					tmp_relnames->data = get_relnames(es, relids);
 
-					if (join_cnt > 0)
-						appendStringInfo(join_str, "\n");
-					appendStringInfo(join_str, "MERGEJOIN(%s) ", tmp_relnames->data);
-					join_cnt++;
-
-					act_rows = rows;
-					est_rows = ((Plan *)planstate->plan)->plan_rows; /* estimated rows */
-					diff_rows = act_rows - est_rows; /* diff rows = actual rows - estimated rows */
-					/*
-					if(diff_rows > 0)
-					{
-						appendStringInfo(rows_str, "ROWS(%s +%.0f) ", tmp_relnames->data, diff_rows);
-					}
-					else if(diff_rows < 0)
-					{
-						appendStringInfo(rows_str, "ROWS(%s %.0f) ", tmp_relnames->data, diff_rows);
-					}
-					*/
-
-					if(est_rows != act_rows)
-					{
-						if (rows_cnt > 0)
-							appendStringInfo(rows_str, "\n");
-						
-						appendStringInfo(rows_str, "ROWS(%s #%.0f) ", tmp_relnames->data, act_rows);
-						rows_cnt++;
-					}
-
-					if(diff_rows < 0)
-						diff_rows = diff_rows * -1.0;
-					elog(DEBUG3, "join diff_rows: %.0f", diff_rows);
-					total_diff_rows = total_diff_rows + diff_rows;
-				}
-				break;
-			case T_HashJoin:
-				{
-					Bitmapset  *relids = NULL;
-					ExplainPreScanNode(planstate, &relids);
-					tmp_relnames->data = get_relnames(es, relids);
-
-					if (join_cnt > 0)
-						appendStringInfo(join_str, "\n");
-					appendStringInfo(join_str, "HASHJOIN(%s) ", tmp_relnames->data);
-					join_cnt++;
-
-					act_rows = rows;
-					est_rows = ((Plan *)planstate->plan)->plan_rows; /* estimated rows */
-					diff_rows = act_rows - est_rows; /* diff rows = actual rows - estimated rows */
-					/*
-					if(diff_rows > 0)
-					{
-						appendStringInfo(rows_str, "ROWS(%s +%.0f) ", tmp_relnames->data, diff_rows);
-					}
-					else if(diff_rows < 0)
-					{
-						appendStringInfo(rows_str, "ROWS(%s %.0f) ", tmp_relnames->data, diff_rows);
-					}
-					*/
-
-					if(est_rows != act_rows)
-					{
-						if (rows_cnt > 0)
-							appendStringInfo(rows_str, "\n");
-						appendStringInfo(rows_str, "ROWS(%s #%.0f) ", tmp_relnames->data, act_rows);
-						rows_cnt++;
-					}
-
-					if(diff_rows < 0)
-						diff_rows = diff_rows * -1.0;
-					elog(DEBUG3, "join diff_rows: %.0f", diff_rows);
-					total_diff_rows = total_diff_rows + diff_rows;
-				}
-				break;
-			default:
-				break;
-		}
+				if (diff_rows < 0)
+					diff_rows = diff_rows * -1.0;
+				elog(DEBUG3, "join diff_rows: %.0f", diff_rows);
+				total_diff_rows = total_diff_rows + diff_rows;
+			}
+			break;
+		default:
+			break;
 	}
 
 	/* Get ready to display the child plans */
@@ -1887,12 +1826,12 @@ elog(DEBUG1, "    Parent Relationship: %s", relationship);
 	/* lefttree */
 	if (outerPlanState(planstate))
 		CreateScanJoinRowsHints(outerPlanState(planstate), ancestors,
-					"Outer", NULL, es);
+								"Outer", NULL, es);
 
 	/* righttree */
 	if (innerPlanState(planstate))
 		CreateScanJoinRowsHints(innerPlanState(planstate), ancestors,
-					"Inner", NULL, es);
+								"Inner", NULL, es);
 
 	if (haschildren)
 	{
@@ -1909,7 +1848,7 @@ pg_plan_advsr_NewExplainState(void)
 {
 	ExplainState *es = (ExplainState *) palloc0(sizeof(ExplainState));
 
-elog(DEBUG1, "### pg_plan_advsr_NewExplainState ###");
+	elog(DEBUG1, "### pg_plan_advsr_NewExplainState ###");
 
 	/* Set default options (most fields can be left as zeroes). */
 	es->costs = true;
@@ -1949,7 +1888,7 @@ pg_plan_advsr_ExplainTargetRel(Plan *plan, Index rti, ExplainState *es)
 	RangeTblEntry *rte;
 	char	   *refname;
 
-elog(DEBUG1, "    # pg_plan_advsr_ExplainTargetRel #");
+	elog(DEBUG1, "    # pg_plan_advsr_ExplainTargetRel #");
 
 	rte = rt_fetch(rti, es->rtable);
 	refname = (char *) list_nth(es->rtable_names, rti - 1);
@@ -1993,19 +1932,22 @@ elog(DEBUG1, "    # pg_plan_advsr_ExplainTargetRel #");
 	}
 }
 
-
 /*
  * Replace all before strings to after strings in buf strings.
  * NOTE: Assumes there is enough room in the buf buffer!
  */
-void replaceAll(char *buf, const char *before, const char *after)
+void
+replaceAll(char *buf, const char *before, const char *after)
 {
-	char *dup = pstrdup(buf);	// copy buf, and malloc
-	char *ptr1, *ptr2;
+	char	   *dup = pstrdup(buf);
 
-	int dup_len = strlen(dup);
-	int before_len = strlen(before);
-	int after_len = strlen(after);
+	//copy buf, and malloc
+		char	   *ptr1,
+			   *ptr2;
+
+	int			dup_len = strlen(dup);
+	int			before_len = strlen(before);
+	int			after_len = strlen(after);
 
 	ptr1 = dup;
 	while ((ptr2 = strstr(ptr1, before)) != NULL)
@@ -2027,4 +1969,3 @@ void replaceAll(char *buf, const char *before, const char *after)
 
 
 #include "pg_stat_statements.c"
-
