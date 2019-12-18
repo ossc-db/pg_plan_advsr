@@ -429,9 +429,9 @@ Copyright (c) 2019, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 The following individuals (in alphabetical order) have contributed to pg_plan_advsr as patch authors, reviewers, testers, advisers, or reporters of issues. Thanks a lot!
 
 David Pitts  
-Etsuro Fujita
-Hironobu Suzuki
-Julien Rouhaud	
+Etsuro Fujita  
+Hironobu Suzuki  
+Julien Rouhaud  
 Kaname Furutani  
 Kyotaro Horiguchi  
 Laurenz Albe  
