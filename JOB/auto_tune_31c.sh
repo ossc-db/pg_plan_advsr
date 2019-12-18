@@ -2,7 +2,7 @@
 
 psql -f all_reset.sql
 
-for i in `seq 1 16`; do 
+for i in `seq 1 17`; do 
     echo "=== ${i} ===" && psql -f 31c_test.sql -P pager; 
 done
 

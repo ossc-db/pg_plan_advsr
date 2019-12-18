@@ -113,9 +113,9 @@ The topmost join method is changed from Hash Join to Nested loop. The execution 
 	(14 rows)
 	
 
-Finally, you can see plan changes and execution time changes to check plan_repo.plan_history table and pg_store_plans view, if you want. 
+Finally, you can see plan changes and execution time changes to check plan_repo.plan_history table and pg_store_plans view, if you want. Of course, you can bring the execution plan from the verification environment to other environments because this extension use optimizer hint internally and it is just strings (text).
 
-See: [Usage](#4-usage)
+See: [Usage](#4-usage) for more details.
 
 
 
@@ -124,15 +124,15 @@ See: [Usage](#4-usage)
 
 Functions
 ---------
-- FUNCTION pg_plan_advsr_enable_feedback() RETURNS void
-- FUNCTION pg_plan_advsr_disable_feedback() RETURNS void
-- FUNCTION plan_repo.get_hint(bigint) RETURNS text
+- FUNCTION ``pg_plan_advsr_enable_feedback()`` RETURNS void
+- FUNCTION ``pg_plan_advsr_disable_feedback()`` RETURNS void
+- FUNCTION ``plan_repo.get_hint(bigint)`` RETURNS text
 
 Tables
 ------
-- plan_repo.plan_history
-- plan_repo.norm_queries
-- plan_repo.raw_queries
+- ``plan_repo.plan_history``
+- ``plan_repo.norm_queries``
+- ``plan_repo.raw_queries``
 
 Table "plan_repo.plan_history"
 
@@ -173,14 +173,14 @@ Table "plan_repo.raw_queries"
 3 Options
 =========
 
-- pg_plan_advsr.enabled
+- ``pg_plan_advsr.enabled``
 
 	"ON": Enable pg_plan_advsr. 
 	It allows creating various hints for fixing row estimation errors and also for reproducing a plan.
 	It also stores them to the plan_history table. If you want to use "auto plan tuning using feedback loop", you have to execute below function "pg_plan_advsr_enable_feedback().
 	Default setting is "ON". 
 
-- pg_plan_advsr.quieted
+- ``pg_plan_advsr.quieted``
 
 	"ON": Enable quiet mode. 
 	It allows to disable emmiting the following messages when your EXPLAIN ANALYZE commmand finished.
@@ -194,7 +194,7 @@ Table "plan_repo.raw_queries"
 
 	Default setting is "OFF".
 
-- pg_plan_advsr_enable_feedback()
+- ``pg_plan_advsr_enable_feedback()``
 
 	This function allows you to use feedback loop for plan tuning.
 	Actually, it is a wrapper for these commands:
@@ -203,7 +203,7 @@ Table "plan_repo.raw_queries"
 	    set pg_hint_plan.enable_hint_table to on;
 	    set pg_hint_plan.debug_print to on;
 	
-- pg_plan_advsr_disable_feedback()
+- ``pg_plan_advsr_disable_feedback()``
 
 	This function disables using feedback loop for plan tuning. It is a wrapper for these commands:
 
@@ -220,7 +220,7 @@ There are two types of usage.
 
 - For auto plan tuning
 
-	First, Run select "pg_plan_advsr_enable_feedback();".
+	First, Run ``select pg_plan_advsr_enable_feedback();``.
 	Then, Execute EXPLAIN ANALYZE command (which is your query) repeatedly until row estimation errors had vanished.
 	Finally, You can check a result of the tuning by using the below queries:
 
@@ -229,6 +229,9 @@ There are two types of usage.
 	  select queryid, planid, plan from pg_store_plans where queryid='your pgsp_queryid in plan_history' order by first_call;
 	  
 	See shell script file as an example: [JOB/auto_tune_31c.sh](https://github.com/ossc-db/pg_plan_advsr/blob/master/JOB/auto_tune_31c.sh)
+	
+	If you'd like to reproduce the execution plans on other environments, you'd be better to read the other.
+
 
 	Note:
 	
@@ -237,7 +240,7 @@ There are two types of usage.
 
 - For only getting hints of current query to reproduce a plan on other databases
 
-	First, Run "select pg_plan_advsr_disable_feedback();". 
+	First, Run ``select pg_plan_advsr_disable_feedback();``. 
 	Then, Execute EXPLAIN ANALYZE command (which is your query). 
 	Finally, You can get hints by using the below queries:
 
@@ -266,8 +269,10 @@ There are two types of usage.
 	  SEQSCAN(x) INDEXSCAN(t1) INDEXSCAN(t2)
 	  */
 	  --1101439786
-	    
+	
+	You can use the hints to reproduce the execution plan anywhere. It also can be used to modify the execution plan by changing the hints manually.
 
+	
 5 Installation Requirements
 ===========================
 
@@ -284,60 +289,72 @@ pg_plan_advsr uses pg_hint_plan and pg_store_plans cooperatively.
 
 TBA
 
-- Prerequisite for installation
-	- Install postgresql-devel package if you installed PostgreSQL by rpm files
-	- Set the PATH environment variable to pg_config of your PostgreSQL
-	- Set these environment variables PGHOST, PGPORT, PGDATABASE and PGUSER since this extension uses them as a connection string. If you didn't set the variables, the connection string is set "host=127.0.0.1 port=5432 dbname=postgres user=postgres" as a default.
-	
-Operations
-	
-	$ wget https://github.com/ossc-db/pg_hint_plan/archive/REL10_1_3_2.tar.gz
-	$ wget https://github.com/ossc-db/pg_store_plans/archive/1.3.tar.gz
-	$ git clone https://github.com/ossc-db/pg_plan_advsr.git pg_plan_advsr
-	
-	$ tar xvzf REL10_1_3_2.tar.gz
-	$ tar xvzf 1.3.tar.gz
-	
-	$ cp pg_hint_plan-REL10_1_3_2/pg_stat_statements.c pg_plan_advsr/
-	$ cp pg_hint_plan-REL10_1_3_2/normalize_query.h pg_plan_advsr/
-	$ cp pg_store_plans-1.3/pgsp_json*.[ch] pg_plan_advsr/
-	
-	$ cd pg_hint_plan-REL10_1_3_2
-	$ make && make install
-	
-	$ cd ../pg_store_plans-1.3
-	$ make USE_PGXS=1 all install
-	
-	$ cd ../pg_plan_advsr
-	$ make && make install 
-	
-	$ vi $PGDATA/postgresql.conf
-	
-	---- Add this line ----
-	shared_preload_libraries = 'pg_hint_plan, pg_plan_advsr, pg_store_plans'
-	max_parallel_workers_per_gather = 0
-	max_parallel_workers = 0
-	----------------------
-	
-	---- Consider increase these numbers (optional, these are based on your query) ----
-	geqo_threshold = 12 -> XX
-	from_collapse_limit = 8 -> YY
-	join_collapse_limit = 8 -> ZZ
-	-----------------------------------------------------------------------------------
+There are two methods to install the extension: Using Dockerfile or building pg_plan_advsr manually.
 
-	---- Consider decrease the number (optional, it is based on your storage) ----
-	random_page_cost = 4 -> 2 (example)
-	------------------------------------------------------------------------------
+- ``Dockerfile (experimental)``
 
-	$ pg_ctl start
-	$ psql 
-	# create extension pg_hint_plan;
-	# create extension pg_store_plans;
-	# create extension pg_plan_advsr;
+	Operations
+
+		\# cd pg_plan_advsr/docker
+		\# ./build.sh
+	
+	See: build.sh and Dockerfile
+
+- ``Build and install (make && make install)``
+
+	- Prerequisite for installation
+		- Install postgresql-devel package if you installed PostgreSQL by rpm files
+		- Set the PATH environment variable to pg_config of your PostgreSQL
+	
+	Operations
+	
+		$ wget https://github.com/ossc-db/pg_hint_plan/archive/REL10_1_3_2.tar.gz
+		$ wget https://github.com/ossc-db/pg_store_plans/archive/1.3.tar.gz
+		$ git clone https://github.com/ossc-db/pg_plan_advsr.git pg_plan_advsr
+
+		$ tar xvzf REL10_1_3_2.tar.gz
+		$ tar xvzf 1.3.tar.gz
+
+		$ cp pg_hint_plan-REL10_1_3_2/pg_stat_statements.c pg_plan_advsr/
+		$ cp pg_hint_plan-REL10_1_3_2/normalize_query.h pg_plan_advsr/
+		$ cp pg_store_plans-1.3/pgsp_json*.[ch] pg_plan_advsr/
+
+		$ cd pg_hint_plan-REL10_1_3_2
+		$ make && make install
+
+		$ cd ../pg_store_plans-1.3
+		$ make USE_PGXS=1 all install
+
+		$ cd ../pg_plan_advsr
+		$ make && make install 
+
+		$ vi $PGDATA/postgresql.conf
+
+		---- Add this line ----
+		shared_preload_libraries = 'pg_hint_plan, pg_plan_advsr, pg_store_plans'
+		max_parallel_workers_per_gather = 0
+		max_parallel_workers = 0
+		----------------------
+
+		---- Consider increase these numbers (optional, these are based on your query) ----
+		geqo_threshold = 12 -> XX
+		from_collapse_limit = 8 -> YY
+		join_collapse_limit = 8 -> ZZ
+		-----------------------------------------------------------------------------------
+
+		---- Consider decrease the number (optional, it is based on your storage) ----
+		random_page_cost = 4 -> 2 (example)
+		------------------------------------------------------------------------------
+
+		$ pg_ctl start
+		$ psql 
+		# create extension pg_hint_plan;
+		# create extension pg_store_plans;
+		# create extension pg_plan_advsr;
 
 
-* You can try this extension with Join Order Benchmark as a example.
-See: [how_to_setup.md in JOB directory](https://github.com/ossc-db/pg_plan_advsr/blob/master/JOB/how_to_setup.md)
+	* You can try this extension with Join Order Benchmark as a example.
+	See: [how_to_setup.md in JOB directory](https://github.com/ossc-db/pg_plan_advsr/blob/master/JOB/how_to_setup.md)
 
 
 7 Internals
@@ -413,7 +430,8 @@ The following individuals (in alphabetical order) have contributed to pg_plan_ad
 
 David Pitts  
 Etsuro Fujita  
-Julien Rouhaud	
+Hironobu Suzuki  
+Julien Rouhaud  
 Kaname Furutani  
 Kyotaro Horiguchi  
 Laurenz Albe  
