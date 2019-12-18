@@ -1517,8 +1517,6 @@ store_info_to_tables(double totaltime, const char *sourcetext)
 {
 	char		md5[33];
 	char	   *aplname;
-	StringInfo	sql;
-	StringInfo	del_sql;
 	StringInfo	prev_rows_hint;
 	StringInfo	new_hint;
 
@@ -1571,8 +1569,6 @@ store_info_to_tables(double totaltime, const char *sourcetext)
 	pfree(output);
 
 	/* upsert hints to hint_plan.hints */
-	sql = makeStringInfo();
-	del_sql = makeStringInfo();
 	prev_rows_hint = makeStringInfo();
 	new_hint = makeStringInfo();
 
