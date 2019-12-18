@@ -56,6 +56,7 @@ PG_MODULE_MAGIC;
 
 
 bool		isExplain;
+static StringInfo explain_query;
 
 /* for leading hint */
 typedef struct LeadingContext
@@ -789,6 +790,12 @@ pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 												pg_plan_advsr_query_walker,
 												NULL,
 												0);
+	if(isExplain)
+	{
+		elog(DEBUG1, "queryString: %s", queryString);
+		explain_query = makeStringInfo();
+		appendStringInfo(explain_query, "%s", queryString);
+	}
 
 	if (prev_ProcessUtility_hook)
 		prev_ProcessUtility_hook(
@@ -896,7 +903,8 @@ pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
 		InstrEndLoop(queryDesc->totaltime);
 
 	elog(DEBUG1, "isExplain: %d", isExplain);
-	if (isExplain && pg_plan_advsr_is_enabled)
+	if (isExplain && pg_plan_advsr_is_enabled
+				  && strcmp(queryDesc->sourceText, explain_query->data) == 0)
 	{
 		elog(DEBUG1, "## pg_plan_advsr_ExecutorEnd start ##");
 
@@ -913,10 +921,9 @@ pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
 
 		elog(DEBUG1, "## pg_plan_advsr_ExecutorEnd end ##");
 
+		/* initialize */
+		isExplain = false;
 	}
-
-	/* initialize */
-	isExplain = false;
 
 	if (prev_ExecutorEnd_hook)
 		prev_ExecutorEnd_hook(queryDesc);
