@@ -95,11 +95,14 @@ char	   *normalized_query;
 static int	nested_level = 0;
 
 /* GUC variables */
-/* enabling / disabling pg_plan_advsr during EXPLAIN ANALYZE */
+/* enable / disabe pg_plan_advsr during EXPLAIN ANALYZE */
 static bool pg_plan_advsr_is_enabled;
 
-/* enabling / disable quiet mode */
+/* enable / disable quiet mode */
 static bool pg_plan_advsr_is_quieted;
+
+/* enable / disable creating hints evenif query is EXPLAIN without ANALYZE option */
+static bool pg_plan_advsr_widely;
 
 /* Saved hook values in case of unload */
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
@@ -647,6 +650,17 @@ _PG_init(void)
 							 NULL,
 							 NULL,
 							 NULL);
+
+	DefineCustomBoolVariable("pg_plan_advsr.widely",
+							 "pg_plan_advsr works with EXPLAIN command without ANALYZE option",
+							 NULL,
+							 &pg_plan_advsr_widely,
+							 false,
+							 PGC_USERSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
 }
 
 /* Uninstall hooks. */
@@ -1036,6 +1050,9 @@ pg_plan_advsr_query_walker(Node *parsetree)
 		case T_ExplainStmt:
 			{
 				ListCell   *lc;
+
+				if (pg_plan_advsr_widely == 1) /* 1 equals "true" or "on" */
+					return true;
 
 				foreach(lc, ((ExplainStmt *) parsetree)->options)
 				{
