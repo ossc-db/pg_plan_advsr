@@ -177,7 +177,7 @@ Table "plan_repo.raw_queries"
 
 	"ON": Enable pg_plan_advsr. 
 	It allows creating various hints for fixing row estimation errors and also for reproducing a plan.
-	It also stores them to the plan_history table. If you want to use "auto plan tuning using feedback loop", you have to execute below function "pg_plan_advsr_enable_feedback().
+	It also stores them in the plan_history table. If you want to use "auto plan tuning using feedback loop", you have to execute below function "pg_plan_advsr_enable_feedback().
 	Default setting is "ON". 
 
 - ``pg_plan_advsr.quieted``
@@ -193,6 +193,13 @@ Table "plan_repo.raw_queries"
 	    and so on
 
 	Default setting is "OFF".
+
+- ``pg_plan_advsr.widely``
+
+	"ON": Enable creating hints even if EXPLAIN command without ANALYZE option. 
+	It allows creating various hints needed for reproducing a plan, but it doesn't create hints for fixing row estimation errors because there is no information of Actual rows.
+	It also stores them in the plan_history table. If you want to get hints to reproduce a plan, this option helps you.
+	Default setting is "OFF". 
 
 - ``pg_plan_advsr_enable_feedback()``
 
