@@ -1,0 +1,132 @@
+LOAD 'pg_hint_plan';
+LOAD 'pg_plan_advsr';
+set pg_plan_advsr.quieted to on;
+select pg_plan_advsr_enable_feedback();
+ pg_plan_advsr_enable_feedback 
+-------------------------------
+ 
+(1 row)
+
+-- CTE (less than PG12)
+-- First iteration
+\o results/pg10cte.tmpout
+explain analyze 
+with x as (
+	select * 
+	from   t1 
+	limit 201
+) 
+select * 
+from (  select *
+		from   t1 
+		where  a in (select a from x)
+		) tmp,
+		  t2 
+where tmp.a = t2.a;
+\o
+\! sql/maskout.sh results/pg10cte.tmpout
+                                                          QUERY PLAN                                                           
+-------------------------------------------------------------------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=500000 width=xxx) (actual time=xxx rows=201 loops=1)
+   Hash Cond: (t2.a = t1.a)
+   CTE x
+     ->  Limit  (cost=xxx rows=201 width=xxx) (actual time=xxx rows=201 loops=1)
+           ->  Seq Scan on t1 t1_1  (cost=xxx rows=1000000 width=xxx) (actual time=xxx rows=201 loops=1)
+   ->  Seq Scan on t2  (cost=xxx rows=1000000 width=xxx) (actual time=xxx rows=1000000 loops=1)
+   ->  Hash  (cost=xxx rows=500000 width=xxx) (actual time=xxx rows=201 loops=1)
+         ->  Nested Loop  (cost=xxx rows=500000 width=xxx) (actual time=xxx rows=201 loops=1)
+               ->  HashAggregate  (cost=xxx rows=200 width=xxx) (actual time=xxx rows=201 loops=1)
+                     Group Key: x.a
+                     ->  CTE Scan on x  (cost=xxx rows=201 width=xxx) (actual time=xxx rows=201 loops=1)
+               ->  Index Scan using i_t1_a on t1  (cost=xxx rows=1 width=xxx) (actual time=xxx rows=1 loops=201)
+                     Index Cond: (a = x.a)
+(16 rows)
+
+-- Hints
+select scan_hint from plan_repo.plan_history;
+               scan_hint               
+---------------------------------------
+ SEQSCAN(t2) SEQSCAN(x) INDEXSCAN(t1) 
+(1 row)
+
+select join_hint from plan_repo.plan_history;
+     join_hint      
+--------------------
+ HASHJOIN(t2 t1 x) +
+ NESTLOOP(t1 x) 
+(1 row)
+
+select lead_hint from plan_repo.plan_history;
+        lead_hint        
+-------------------------
+ LEADING( (t2 (x t1 )) )
+(1 row)
+
+select rows_hint from plan_repo.plan_history;
+      rows_hint      
+---------------------
+ ROWS(t2 t1 x #201) +
+ ROWS(t1 x #201) 
+(1 row)
+
+-- Second iteration
+\o results/pg10cte_fixed.tmpout
+explain analyze 
+with x as (
+	select * 
+	from   t1 
+	limit 201
+) 
+select * 
+from (  select *
+		from   t1 
+		where  a in (select a from x)
+		) tmp,
+		  t2 
+where tmp.a = t2.a;
+\o
+\! sql/maskout.sh results/pg10cte_fixed.tmpout
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=xxx rows=201 width=xxx) (actual time=xxx rows=201 loops=1)
+   CTE x
+     ->  Limit  (cost=xxx rows=201 width=xxx) (actual time=xxx rows=201 loops=1)
+           ->  Seq Scan on t1 t1_1  (cost=xxx rows=1000000 width=xxx) (actual time=xxx rows=201 loops=1)
+   ->  Nested Loop  (cost=xxx rows=201 width=xxx) (actual time=xxx rows=201 loops=1)
+         ->  HashAggregate  (cost=xxx rows=200 width=xxx) (actual time=xxx rows=201 loops=1)
+               Group Key: x.a
+               ->  CTE Scan on x  (cost=xxx rows=201 width=xxx) (actual time=xxx rows=201 loops=1)
+         ->  Index Scan using i_t1_a on t1  (cost=xxx rows=1 width=xxx) (actual time=xxx rows=1 loops=201)
+               Index Cond: (a = x.a)
+   ->  Index Scan using i_t2_a on t2  (cost=xxx rows=1 width=xxx) (actual time=xxx rows=1 loops=201)
+         Index Cond: (a = t1.a)
+(14 rows)
+
+-- Check Hints. Rows_hint must be NULL since estimation error was fixed.
+select scan_hint from plan_repo.plan_history order by id desc limit 1;
+                scan_hint                
+-----------------------------------------
+ SEQSCAN(x) INDEXSCAN(t1) INDEXSCAN(t2) 
+(1 row)
+
+select join_hint from plan_repo.plan_history order by id desc limit 1;
+     join_hint      
+--------------------
+ NESTLOOP(t2 t1 x) +
+ NESTLOOP(t1 x) 
+(1 row)
+
+select lead_hint from plan_repo.plan_history order by id desc limit 1;
+        lead_hint        
+-------------------------
+ LEADING( ((x t1 )t2 ) )
+(1 row)
+
+select rows_hint from plan_repo.plan_history order by id desc limit 1;
+ rows_hint 
+-----------
+ 
+(1 row)
+
+-- Clean-up
+\! rm -f pg10cte.tmpout pg10cte_fixed.tmpout

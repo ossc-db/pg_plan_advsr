@@ -3,6 +3,10 @@ DATA = pg_plan_advsr--0.0.sql
 
 OBJS = pg_plan_advsr.o pgsp_json.o pgsp_json_text.o
 
+REGRESS = init base
+REGRESS_OPTS = --encoding=UTF8
+EGRESSION_EXPECTED = expected/init.out expected/base.out
+
 MODULE_big = $(EXTENSION)
 
 PG_CPPFLAGS = -I$(libpq_srcdir)
@@ -19,3 +23,4 @@ PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 endif
 
+installcheck: $(REGRESSION_EXPECTED)
