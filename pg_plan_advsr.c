@@ -1669,7 +1669,7 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 	StringInfo	tmp_relnames = makeStringInfo();
 
 	elog(DEBUG1, "### CreateScanJoinRowsHints ###");
-	elog(DEBUG1, "    Parent Relationship: %s", relationship);
+	elog(DEBUG1, "    Parent Relationship: %s", relationship != NULL ? relationship : "");
 
 	/* Remove initPlan-s such as CTE */
 	if (planstate->initPlan)
