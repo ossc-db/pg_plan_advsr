@@ -617,6 +617,30 @@ insertHints(const char *norm_query_string, const char *application_name, const c
 void
 _PG_init(void)
 {
+	List       *lib_list;
+	ListCell   *l;
+	int         i = 0;
+
+	if (process_shared_preload_libraries_in_progress == true)
+	{
+		SplitIdentifierString(shared_preload_libraries_string, ',', &lib_list);
+		foreach(l, lib_list)
+		{
+			char *curname = (char *) lfirst(l);
+			if (strcmp(curname, "pg_hint_plan") == 0)
+				i++;
+			else if (strcmp(curname, "pg_store_plans") == 0)
+				i++;
+		}
+		if (i != 2)
+		{
+			ereport(ERROR,
+				(errmsg("pg_hint_plan and/or pg_store_plans are not loaded."),
+				 errhint("pg_plan_advsr needs them. You can check shared_preload_libraries!")));
+		}
+		pfree(lib_list);
+	}
+
 	prev_post_parse_analyze_hook = post_parse_analyze_hook;
 	post_parse_analyze_hook = pg_plan_advsr_post_parse_analyze_hook;
 
