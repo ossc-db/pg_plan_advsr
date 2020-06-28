@@ -147,7 +147,8 @@ Table "plan_repo.plan_history"
 	 scan_hint        | text                        | Scan_hint of this plan
 	 join_hint        | text                        | Join_hint of this plan
 	 lead_hint        | text                        | Leading_hint of this plan
-	 diff_of_joins    | numeric                     | Sum of estimation row error of joins (NULL means no estimation error) 
+	 diff_of_joins    | numeric                     | Sum of estimation row error of joins (NULL means no estimation error)
+	 max_diff_ratio   | numeric                     | Maximum estimation row error ratio of joins
 	 join_cnt         | integer                     | Join number of this plan
 	 application_name | text                        | Application name of client tool such as "psql"
 	 timestamp        | timestamp without time zone | Timestamp of this record inserted

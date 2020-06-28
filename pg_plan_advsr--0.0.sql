@@ -21,6 +21,7 @@ CREATE TABLE plan_repo.plan_history
 	lead_hint			text,
 --	diff_of_joins		numeric,
 	diff_of_joins		double precision,
+	max_diff_ratio		double precision,
 	join_cnt			int,
 	application_name	text,
 	timestamp			timestamp
