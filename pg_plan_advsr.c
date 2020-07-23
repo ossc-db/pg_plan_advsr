@@ -81,10 +81,14 @@ static uint32 pgsp_planid;
 /* estimated/actual rows number */
 static double est_rows;
 static double act_rows;
-static double diff_rows;		/* = act_rows - est_rows */
-static double total_diff_rows;
-static double diff_ratio;
-static double max_diff_ratio;
+static double diff_rows_join;		/* = act_rows - est_rows */
+static double diff_rows_scan;
+static double total_diff_rows_join;
+static double total_diff_rows_scan;
+static double diff_ratio_join;
+static double diff_ratio_scan;
+static double max_diff_ratio_join;
+static double max_diff_ratio_scan;
 
 /* counters */
 static int	scan_cnt;
@@ -194,7 +198,7 @@ void		replaceAll(char *buf, const char *before, const char *after);
 
 
 /* plan_repo.plan_history */
-#define Natts_plan_history					14
+#define Natts_plan_history					16
 #define Anum_plan_history_id				1	/* serial */
 #define Anum_plan_history_norm_query_hash	2	/* text */
 #define Anum_plan_history_pgsp_queryid		3	/* bigint */
@@ -204,11 +208,13 @@ void		replaceAll(char *buf, const char *before, const char *after);
 #define Anum_plan_history_scan_hint			7	/* text */
 #define Anum_plan_history_join_hint			8	/* text */
 #define Anum_plan_history_lead_hint			9	/* text */
-#define Anum_plan_history_diff_of_joins		10	/* double precision */
-#define Anum_plan_history_max_diff_ratio	11	/* double precision */
-#define Anum_plan_history_join_cnt			12	/* int */
-#define Anum_plan_history_application_name	13	/* text */
-#define Anum_plan_history_timestamp			14	/* timestamp */
+#define Anum_plan_history_diff_of_scans		10	/* double precision */
+#define Anum_plan_history_max_diff_ratio_scan	11	/* double precision */
+#define Anum_plan_history_diff_of_joins		12	/* double precision */
+#define Anum_plan_history_max_diff_ratio_join	13	/* double precision */
+#define Anum_plan_history_join_cnt			14	/* int */
+#define Anum_plan_history_application_name	15	/* text */
+#define Anum_plan_history_timestamp			16	/* timestamp */
 
 /* plan_repo.norm_queries */
 #define Natts_norm_queries					2
@@ -234,8 +240,10 @@ static Oid	resolveRelationId(text *relationName, bool missingOk);
 static uint64 getNextVal(const char *sequence);
 static bool insertPlanHistory(const char *norm_query_hash, const uint32 pgsp_queryid, const uint32 pgsp_planid,
 							  const double execution_time, const char *rows_hint, const char *scan_hint,
-							  const char *join_hint, const char *lead_hint, const double diff_of_joins,
-							  const double max_diff_ratio, const int join_cnt, char *application_name);
+							  const char *join_hint, const char *lead_hint,
+							  const double diff_of_scans, const double max_diff_ratio_scan,
+							  const double diff_of_joins, const double max_diff_ratio_join,
+							  const int join_cnt, char *application_name);
 static bool insertNormQueries(const char *norm_query_hash, const char *norm_query_string);
 static bool insertRawQueries(const char *raw_query_hash, const char *raw_query_string);
 static void selectHints(const char *norm_query_string, const char *application_name, StringInfo prev_rows_hint);
@@ -329,8 +337,10 @@ getNextVal(const char *sequence)
 static bool
 insertPlanHistory(const char *norm_query_hash, const uint32 pgsp_queryid, const uint32 pgsp_planid,
 				  const double execution_time, const char *rows_hint, const char *scan_hint,
-				  const char *join_hint, const char *lead_hint, const double diff_of_joins,
-				  const double max_diff_ratio, const int join_cnt, char *application_name)
+				  const char *join_hint, const char *lead_hint,
+				  const double diff_of_scans, const double max_diff_ratio_scan,
+				  const double diff_of_joins, const double max_diff_ratio_join,
+				  const int join_cnt, char *application_name)
 {
 	Relation	rel = NULL;
 	TupleDesc	tupleDescriptor = NULL;
@@ -367,12 +377,18 @@ insertPlanHistory(const char *norm_query_hash, const uint32 pgsp_queryid, const 
 	values[Anum_plan_history_lead_hint - 1] = CStringGetTextDatum(lead_hint);
 	isNulls[Anum_plan_history_lead_hint - 1] = (lead_hint == NULL) ? true : false;
 
+	values[Anum_plan_history_diff_of_scans - 1] = Float8GetDatum(diff_of_scans);
+	isNulls[Anum_plan_history_diff_of_scans - 1] = false;
+	values[Anum_plan_history_max_diff_ratio_scan - 1] = Float8GetDatum(max_diff_ratio_scan);
+	isNulls[Anum_plan_history_max_diff_ratio_scan - 1] = false;
+
 	values[Anum_plan_history_diff_of_joins - 1] = Float8GetDatum(diff_of_joins);
 	isNulls[Anum_plan_history_diff_of_joins - 1] = false;
-	values[Anum_plan_history_max_diff_ratio - 1] = Float8GetDatum(max_diff_ratio);
-	isNulls[Anum_plan_history_max_diff_ratio - 1] = false;
+	values[Anum_plan_history_max_diff_ratio_join - 1] = Float8GetDatum(max_diff_ratio_join);
+	isNulls[Anum_plan_history_max_diff_ratio_join - 1] = false;
 	values[Anum_plan_history_join_cnt - 1] = Int32GetDatum(join_cnt);
 	isNulls[Anum_plan_history_join_cnt - 1] = false;
+
 	values[Anum_plan_history_application_name - 1] = CStringGetTextDatum(application_name);
 	isNulls[Anum_plan_history_application_name - 1] = (application_name == NULL) ? true : false;
 	values[Anum_plan_history_timestamp - 1] = TimestampGetDatum(GetCurrentTimestamp());
@@ -1486,8 +1502,10 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 	PlanState  *ps;
 	double		totaltime;
 
-	total_diff_rows = 0;
-	max_diff_ratio = 0;
+	total_diff_rows_join = 0;
+	total_diff_rows_scan = 0;
+	max_diff_ratio_join = 0;
+	max_diff_ratio_scan = 0;
 
 	/* Set up ExplainState fields associated with this plan tree */
 	Assert(queryDesc->plannedstmt != NULL);
@@ -1540,8 +1558,10 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 		elog(INFO, "---- Hints for current plan ------\n%s\n%s\n%s", scan_str->data, join_str->data, leadcxt->lead_str->data);
 		elog(INFO, "---- Rows hint (feedback info)----\n%s", rows_str->data);
 		elog(INFO, "---- Join count ------------------\n\t\t%d", join_cnt);
-		elog(INFO, "---- Total diff rows of joins ----\n\t\t%.0f", total_diff_rows);
-		elog(INFO, "---- Maximum diff ratio ----------\n\t\t%.0f", max_diff_ratio);
+		elog(INFO, "---- Total diff rows of joins ----\n\t\t%.0f", total_diff_rows_join);
+		elog(INFO, "---- Maximum diff ratio of joins -\n\t\t%.0f", max_diff_ratio_join);
+		elog(INFO, "---- Total diff rows of scans ----\n\t\t%.0f", total_diff_rows_scan);
+		elog(INFO, "---- Maximum diff ratio of scans -\n\t\t%.0f", max_diff_ratio_scan);
 	}
 
 	/* store above data to tables */
@@ -1593,9 +1613,10 @@ store_info_to_tables(double totaltime, const char *sourcetext)
 
 	/* insert totaltime and hints to plan_repo.plan_history */
 	if (insertPlanHistory(md5, pgsp_queryid, pgsp_planid, totaltime,
-						  rows_str->data, scan_str->data, join_str->data,
-						  leadcxt->lead_str->data, total_diff_rows /* diff of joins */ ,
-						  max_diff_ratio, join_cnt, aplname))
+				rows_str->data, scan_str->data, join_str->data,
+				leadcxt->lead_str->data,
+				total_diff_rows_scan, max_diff_ratio_scan,
+				total_diff_rows_join, max_diff_ratio_join, join_cnt, aplname))
 		elog(DEBUG3, "\ninsert success: plan_history\n");
 	else
 		elog(INFO, "\ninsert error: plan_history\n");
@@ -1811,6 +1832,43 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 	 */
 	switch (nodeTag(plan))
 	{
+		case T_SeqScan:
+		case T_SampleScan:
+		case T_BitmapHeapScan:
+		case T_TidScan:
+		case T_SubqueryScan:
+		case T_FunctionScan:
+		case T_TableFuncScan:
+		case T_ValuesScan:
+		case T_CteScan:
+		case T_WorkTableScan:
+		case T_ForeignScan:
+		case T_CustomScan:
+		case T_IndexScan:
+		case T_IndexOnlyScan:
+		case T_BitmapIndexScan:
+			{
+				est_rows = ((Plan *) planstate->plan)->plan_rows;
+				act_rows = rows == -1 ? est_rows : rows;
+
+				if (est_rows != act_rows)
+				{
+					if (est_rows > act_rows)
+					{
+						diff_rows_scan  = est_rows - clamp_row_est(act_rows);
+						diff_ratio_scan = est_rows / clamp_row_est(act_rows);
+					}
+					else
+					{
+						diff_rows_scan  = act_rows - est_rows;
+						diff_ratio_scan = act_rows / est_rows;
+					}
+					total_diff_rows_scan = total_diff_rows_scan + diff_rows_scan;
+					if (diff_ratio_scan > max_diff_ratio_scan)
+						max_diff_ratio_scan = diff_ratio_scan;
+				}
+			}
+			break;
 		case T_NestLoop:
 		case T_MergeJoin:
 		case T_HashJoin:
@@ -1835,9 +1893,9 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 
 				est_rows = ((Plan *) planstate->plan)->plan_rows;	/* estimated rows */
 				act_rows = rows == -1 ? est_rows : rows;
-				diff_rows = act_rows - est_rows;	/* diff rows = actual rows
+				diff_rows_join = act_rows - est_rows;	/* diff rows = actual rows
 													 * - estimated rows */
-				diff_ratio = 0;
+				diff_ratio_join = 0;
 
 				if (est_rows != act_rows)
 				{
@@ -1847,18 +1905,18 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 					rows_cnt++;
 
 					if (est_rows > act_rows)
-						diff_ratio = est_rows / clamp_row_est(act_rows);
+						diff_ratio_join = est_rows / clamp_row_est(act_rows);
 					else
-						diff_ratio = act_rows / est_rows;
+						diff_ratio_join = act_rows / est_rows;
 				}
 
-				if (diff_rows < 0)
-					diff_rows = diff_rows * -1.0;
-				elog(DEBUG3, "join diff_rows: %.0f", diff_rows);
-				total_diff_rows = total_diff_rows + diff_rows;
+				if (diff_rows_join < 0)
+					diff_rows_join = diff_rows_join * -1.0;
+				elog(DEBUG3, "join diff_rows: %.0f", diff_rows_join);
+				total_diff_rows_join = total_diff_rows_join + diff_rows_join;
 
-				if (diff_ratio > max_diff_ratio)
-					max_diff_ratio = diff_ratio;
+				if (diff_ratio_join > max_diff_ratio_join)
+					max_diff_ratio_join = diff_ratio_join;
 			}
 			break;
 		default:
@@ -1921,8 +1979,10 @@ pg_plan_advsr_NewExplainState(void)
 	rows_str = makeStringInfo();
 	est_rows = 0;
 	act_rows = 0;
-	diff_rows = 0;
-	diff_ratio = 0;
+	diff_rows_join  = 0;
+	diff_ratio_join = 0;
+	diff_rows_scan  = 0;
+	diff_ratio_scan = 0;
 	scan_cnt = 0;
 	join_cnt = 0;
 	rows_cnt = 0;
