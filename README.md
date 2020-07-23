@@ -136,22 +136,24 @@ Tables
 
 Table "plan_repo.plan_history"
 
-	      Column      |            Type             | Description
-	------------------+-----------------------------+-------------------------------------------------------------------------------
-	 id               | integer                     | Sequence as a primary key: nextval('plan_repo.plan_history_id_seq'::regclass)
-	 norm_query_hash  | text                        | MD5 based on normalized query text
-	 pgsp_queryid     | bigint                      | Queryid of pg_store_plans
-	 pgsp_planid      | bigint                      | Planid of pg_sotre_plans
-	 execution_time   | numeric                     | Execution time (ms) of this planid 
-	 rows_hint        | text                        | Rows_hint of this plan
-	 scan_hint        | text                        | Scan_hint of this plan
-	 join_hint        | text                        | Join_hint of this plan
-	 lead_hint        | text                        | Leading_hint of this plan
-	 diff_of_joins    | numeric                     | Sum of estimation row error of joins (NULL means no estimation error)
-	 max_diff_ratio   | numeric                     | Maximum estimation row error ratio of joins
-	 join_cnt         | integer                     | Join number of this plan
-	 application_name | text                        | Application name of client tool such as "psql"
-	 timestamp        | timestamp without time zone | Timestamp of this record inserted
+	      Column         |            Type             | Description
+	---------------------+-----------------------------+-------------------------------------------------------------------------------
+	 id                  | integer                     | Sequence as a primary key: nextval('plan_repo.plan_history_id_seq'::regclass)
+	 norm_query_hash     | text                        | MD5 based on normalized query text
+	 pgsp_queryid        | bigint                      | Queryid of pg_store_plans
+	 pgsp_planid         | bigint                      | Planid of pg_sotre_plans
+	 execution_time      | numeric                     | Execution time (ms) of this planid 
+	 rows_hint           | text                        | Rows_hint of this plan
+	 scan_hint           | text                        | Scan_hint of this plan
+	 join_hint           | text                        | Join_hint of this plan
+	 lead_hint           | text                        | Leading_hint of this plan
+	 diff_of_scans       | numeric                     | Sum of estimation row error of scans
+	 max_diff_ratio_scan | numeric                     | Maximum estimation row error ratio of scans
+	 diff_of_joins       | numeric                     | Sum of estimation row error of joins
+	 max_diff_ratio_join | numeric                     | Maximum estimation row error ratio of joins
+	 join_cnt            | integer                     | Join number of this plan
+	 application_name    | text                        | Application name of client tool such as "psql"
+	 timestamp           | timestamp without time zone | Timestamp of this record inserted
 
 Table "plan_repo.norm_queries"
 
@@ -286,7 +288,7 @@ There are two types of usage.
 
 pg_plan_advsr uses pg_hint_plan and pg_store_plans cooperatively.
 
-- PostgreSQL => 10.4 (However, not supported PG11 yet.) 
+- PostgreSQL => 10.4
 - pg_hint_plan => 1.3.2
 - pg_store_plans => 1.3
 - RHEL/CentOS = 7.x (6.x is not tested but I suppose it works)
