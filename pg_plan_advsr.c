@@ -1863,6 +1863,7 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 						diff_rows_scan  = act_rows - est_rows;
 						diff_ratio_scan = act_rows / est_rows;
 					}
+					elog(DEBUG3, "scan diff_rows: %.0f", diff_rows_scan);
 					total_diff_rows_scan = total_diff_rows_scan + diff_rows_scan;
 					if (diff_ratio_scan > max_diff_ratio_scan)
 						max_diff_ratio_scan = diff_ratio_scan;
@@ -1893,10 +1894,8 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 
 				est_rows = ((Plan *) planstate->plan)->plan_rows;	/* estimated rows */
 				act_rows = rows == -1 ? est_rows : rows;
-				diff_rows_join = act_rows - est_rows;	/* diff rows = actual rows
-													 * - estimated rows */
-				diff_ratio_join = 0;
 
+				diff_ratio_join = 0;
 				if (est_rows != act_rows)
 				{
 					if (rows_cnt > 0)
@@ -1905,18 +1904,20 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 					rows_cnt++;
 
 					if (est_rows > act_rows)
+					{
+						diff_rows_join  = est_rows - clamp_row_est(act_rows);
 						diff_ratio_join = est_rows / clamp_row_est(act_rows);
+					}
 					else
+					{
+						diff_rows_join  = act_rows - est_rows;
 						diff_ratio_join = act_rows / est_rows;
+					}
+					elog(DEBUG3, "join diff_rows: %.0f", diff_rows_join);
+					total_diff_rows_join = total_diff_rows_join + diff_rows_join;
+					if (diff_ratio_join > max_diff_ratio_join)
+						max_diff_ratio_join = diff_ratio_join;
 				}
-
-				if (diff_rows_join < 0)
-					diff_rows_join = diff_rows_join * -1.0;
-				elog(DEBUG3, "join diff_rows: %.0f", diff_rows_join);
-				total_diff_rows_join = total_diff_rows_join + diff_rows_join;
-
-				if (diff_ratio_join > max_diff_ratio_join)
-					max_diff_ratio_join = diff_ratio_join;
 			}
 			break;
 		default:
