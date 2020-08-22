@@ -45,6 +45,7 @@
 #endif
 #if PG_VERSION_NUM >= 120000
 #include "access/table.h"
+#include "optimizer/optimizer.h"
 #endif
 
 /* came from pg_hint_plan REL10_1_3_2 */
@@ -196,6 +197,9 @@ static uint32 hash_query(const char *query);
 /* replace all before strings to after strings in buf strings */
 void		replaceAll(char *buf, const char *before, const char *after);
 
+/* calculate the difference between estimated rows and actual rows */
+double		get_diff_rows(double est_rows, double act_rows);
+double		get_diff_ratio(double est_rows, double act_rows);
 
 /* plan_repo.plan_history */
 #define Natts_plan_history					16
@@ -1559,9 +1563,9 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 		elog(INFO, "---- Rows hint (feedback info)----\n%s", rows_str->data);
 		elog(INFO, "---- Join count ------------------\n\t\t%d", join_cnt);
 		elog(INFO, "---- Total diff rows of joins ----\n\t\t%.0f", total_diff_rows_join);
-		elog(INFO, "---- Maximum diff ratio of joins -\n\t\t%.0f", max_diff_ratio_join);
+		elog(INFO, "---- Maximum diff ratio of joins -\n\t\t%.3f", max_diff_ratio_join);
 		elog(INFO, "---- Total diff rows of scans ----\n\t\t%.0f", total_diff_rows_scan);
-		elog(INFO, "---- Maximum diff ratio of scans -\n\t\t%.0f", max_diff_ratio_scan);
+		elog(INFO, "---- Maximum diff ratio of scans -\n\t\t%.3f", max_diff_ratio_scan);
 	}
 
 	/* store above data to tables */
@@ -1849,22 +1853,16 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 		case T_BitmapIndexScan:
 			{
 				est_rows = ((Plan *) planstate->plan)->plan_rows;
-				act_rows = rows == -1 ? est_rows : rows;
+				act_rows = rows == -1 ? est_rows : clamp_row_est(rows);
 
 				if (est_rows != act_rows)
 				{
-					if (est_rows > act_rows)
-					{
-						diff_rows_scan  = est_rows - clamp_row_est(act_rows);
-						diff_ratio_scan = est_rows / clamp_row_est(act_rows);
-					}
-					else
-					{
-						diff_rows_scan  = act_rows - est_rows;
-						diff_ratio_scan = act_rows / est_rows;
-					}
-					elog(DEBUG3, "scan diff_rows: %.0f", diff_rows_scan);
+					diff_rows_scan = get_diff_rows(est_rows, act_rows);
+					elog(DEBUG3, "diff_rows_scan : %.0f", diff_rows_scan);
 					total_diff_rows_scan = total_diff_rows_scan + diff_rows_scan;
+
+					diff_ratio_scan = get_diff_ratio(est_rows, act_rows);
+					elog(DEBUG3, "diff_ratio_scan: %.3f", diff_ratio_scan);
 					if (diff_ratio_scan > max_diff_ratio_scan)
 						max_diff_ratio_scan = diff_ratio_scan;
 				}
@@ -1892,10 +1890,9 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 				appendStringInfo(join_str, "(%s) ", tmp_relnames->data);
 				join_cnt++;
 
-				est_rows = ((Plan *) planstate->plan)->plan_rows;	/* estimated rows */
-				act_rows = rows == -1 ? est_rows : rows;
+				est_rows = ((Plan *) planstate->plan)->plan_rows;
+				act_rows = rows == -1 ? est_rows : clamp_row_est(rows);
 
-				diff_ratio_join = 0;
 				if (est_rows != act_rows)
 				{
 					if (rows_cnt > 0)
@@ -1903,18 +1900,12 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 					appendStringInfo(rows_str, "ROWS(%s #%.0f) ", tmp_relnames->data, act_rows);
 					rows_cnt++;
 
-					if (est_rows > act_rows)
-					{
-						diff_rows_join  = est_rows - clamp_row_est(act_rows);
-						diff_ratio_join = est_rows / clamp_row_est(act_rows);
-					}
-					else
-					{
-						diff_rows_join  = act_rows - est_rows;
-						diff_ratio_join = act_rows / est_rows;
-					}
-					elog(DEBUG3, "join diff_rows: %.0f", diff_rows_join);
+					diff_rows_join = get_diff_rows(est_rows, act_rows);
+					elog(DEBUG3, "diff_rows_join : %.0f", diff_rows_join);
 					total_diff_rows_join = total_diff_rows_join + diff_rows_join;
+
+					diff_ratio_join = get_diff_ratio(est_rows, act_rows);
+					elog(DEBUG3, "diff_ratio_join: %.3f", diff_ratio_join);
 					if (diff_ratio_join > max_diff_ratio_join)
 						max_diff_ratio_join = diff_ratio_join;
 				}
@@ -2088,6 +2079,40 @@ replaceAll(char *buf, const char *before, const char *after)
 	strcpy(buf, "\0");
 
 	pfree(dup);
+}
+
+double
+get_diff_rows(double est_rows, double act_rows)
+{
+	double diff_rows = 0;
+
+	if (est_rows > act_rows)
+	{
+		diff_rows  = est_rows - act_rows;
+	}
+	else
+	{
+		diff_rows  = act_rows - est_rows;
+	}
+
+	return diff_rows;
+}
+
+double
+get_diff_ratio(double est_rows, double act_rows)
+{
+	double diff_ratio = 0;
+
+	if (est_rows > act_rows)
+	{
+		diff_ratio = est_rows / act_rows;
+	}
+	else
+	{
+		diff_ratio = act_rows / est_rows;
+	}
+
+	return diff_ratio;
 }
 
 
