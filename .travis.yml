@@ -1,0 +1,66 @@
+before_install:
+  - psql --version
+  - sudo service postgresql stop
+  - sudo apt-get -y --purge remove postgresql libpq-dev libpq5 postgresql-client-common postgresql-common
+  - sudo rm -rf /var/lib/postgresql
+  - sudo apt-get update -qq
+  - sudo apt-get -y install bc libpam-dev libedit-dev
+  - git clone https://github.com/postgres/postgres.git postgres-dev
+  - cd postgres-dev
+  - if [ $PGVERSION = 12 ] ; then git checkout -b REL_12_STABLE origin/REL_12_STABLE; fi
+  - if [ $PGVERSION = 11 ] ; then git checkout -b REL_11_STABLE origin/REL_11_STABLE; fi
+  - if [ $PGVERSION = 10 ] ; then git checkout -b REL_10_STABLE origin/REL_10_STABLE; fi
+  - export POSTGRES_HOME=/home/travis/build/ossc-db/pg_plan_advsr/$PGVERSION
+  - ./configure --prefix=$POSTGRES_HOME
+  - make -j 2
+  - make install
+  - echo 'export PATH=$PATH:$POSTGRES_HOME/bin' >> ~/.bashrc
+  - export PATH=$PATH:$POSTGRES_HOME/bin
+  - export PGDATA=$POSTGRES_HOME/pg_data
+  - echo "export $PGDATA" >> ~/.bashrc
+  - cd /home/travis/build/ossc-db/pg_plan_advsr
+  - mkdir -p $PGDATA
+  - initdb --no-locale --encoding=UTF8 -D $PGDATA
+  - sudo echo "local   all         postgres                          trust" >  $PGDATA/pg_hba.conf
+  - sudo echo "local   all         all                               trust" >> $PGDATA/pg_hba.conf
+  - sudo echo "host    all         all         127.0.0.1/32          trust" >> $PGDATA/pg_hba.conf
+  - sudo echo "host    all         all         ::1/128               trust" >> $PGDATA/pg_hba.conf
+  - sudo echo "logging_collector = on" >> $PGDATA/postgresql.conf
+  - pg_ctl -V
+  - pg_ctl -D $PGDATA start
+
+before_script:
+  - cd /home/travis/build/ossc-db/pg_plan_advsr
+  - git clone https://github.com/ossc-db/pg_hint_plan.git
+  - git clone https://github.com/ossc-db/pg_store_plans.git
+  - git clone https://github.com/ossc-db/pg_plan_advsr
+  - cd pg_hint_plan
+  - if [ $PGVERSION = 11 ] ; then git checkout -b PG11 origin/PG11 && git checkout $(git describe --tag); fi
+  - make -s && make -s install
+  - cp pg_stat_statements.c ../pg_plan_advsr/
+  - cp normalize_query.h ../pg_plan_advsr/
+  - cd ../pg_store_plans 
+  - if [ $PGVERSION = 11 ] ; then git checkout -b R1.3 origin/R1.3 && git checkout $(git describe --tag); fi
+  - make USE_PGXS=1 all install
+  - cp pgsp_json*.[ch] ../pg_plan_advsr/
+  - cd ../pg_plan_advsr/
+  - git describe --alway
+  - make -s
+  - make -s install
+
+env:
+  matrix:
+    - PGVERSION=11
+
+language: cpp
+compiler:
+  - gcc
+
+branches:
+  only:
+  - master
+
+script: make installcheck
+
+after_script:
+  - cat regression.diffs
