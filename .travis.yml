@@ -26,8 +26,7 @@ before_install:
   - sudo echo "host    all         all         127.0.0.1/32          trust" >> $PGDATA/pg_hba.conf
   - sudo echo "host    all         all         ::1/128               trust" >> $PGDATA/pg_hba.conf
   - sudo echo "logging_collector = on" >> $PGDATA/postgresql.conf
-  - pg_ctl -V
-  - pg_ctl -D $PGDATA start
+  - sudo echo "shared_preload_libraries = 'pg_plan_advsr,pg_hint_plan,pg_store_plans'" >> $PGDATA/postgresql.conf
 
 before_script:
   - cd /home/travis/build/ossc-db/pg_plan_advsr
@@ -36,7 +35,7 @@ before_script:
   - git clone https://github.com/ossc-db/pg_plan_advsr
   - cd pg_hint_plan
   - if [ $PGVERSION = 11 ] ; then git checkout -b PG11 origin/PG11 && git checkout $(git describe --tag); fi
-  - make -s && make -s install
+  - make && make install
   - cp pg_stat_statements.c ../pg_plan_advsr/
   - cp normalize_query.h ../pg_plan_advsr/
   - cd ../pg_store_plans 
@@ -45,8 +44,14 @@ before_script:
   - cp pgsp_json*.[ch] ../pg_plan_advsr/
   - cd ../pg_plan_advsr/
   - git describe --alway
-  - make -s
-  - make -s install
+  - make
+  - make install
+  - pg_ctl -V
+  - pg_ctl -D $PGDATA start
+  - sleep 3
+  - psql -c "create extension pg_hint_plan;"
+  - psql -c "create extension pg_store_plans;"
+  - psql -c "create extension pg_plan_advsr;"
 
 env:
   matrix:
