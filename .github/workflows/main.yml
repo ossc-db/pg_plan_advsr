@@ -42,7 +42,7 @@ jobs:
           git clone https://github.com/postgres/postgres.git postgres-dev
           cd postgres-dev
           echo "### ${PGVERSION} ###"
-          export PGHOME=/home/runner/work/actions_test/actions_test/postgres-dev/${PGVERSION}
+          export PGHOME=/home/runner/work/pg_plan_advsr/pg_plan_advsr/postgres-dev/${PGVERSION}
           export PGDATA=${PGHOME}/pg_data
           export PATH=$PATH:${PGHOME}/bin
           echo "### $PATH ###"
@@ -91,7 +91,7 @@ jobs:
       - name: Copy files to pg_plan_advsr and build
         run: |
           echo "### $PGVERSION ###"
-          export PGHOME=/home/runner/work/actions_test/actions_test/postgres-dev/${PGVERSION}
+          export PGHOME=/home/runner/work/pg_plan_advsr/pg_plan_advsr/postgres-dev/${PGVERSION}
           export PGDATA=${PGHOME}/pg_data
           export PATH=$PATH:${PGHOME}/bin
           cd pg_hint_plan 
@@ -109,7 +109,7 @@ jobs:
       - name: Startup PostgreSQL and create extensions
         run: |
           echo "### $PGVERSION ###"
-          export PGHOME=/home/runner/work/actions_test/actions_test/postgres-dev/${PGVERSION}
+          export PGHOME=/home/runner/work/pg_plan_advsr/pg_plan_advsr/postgres-dev/${PGVERSION}
           export PGDATA=${PGHOME}/pg_data
           export PATH=$PATH:${PGHOME}/bin
           echo "shared_preload_libraries = 'pg_plan_advsr,pg_hint_plan,pg_store_plans'" >> $PGDATA/postgresql.conf
@@ -124,7 +124,7 @@ jobs:
       - name: Regression test
         run: |
           echo "### $PGVERSION ###"
-          export PGHOME=/home/runner/work/actions_test/actions_test/postgres-dev/${PGVERSION}
+          export PGHOME=/home/runner/work/pg_plan_advsr/pg_plan_advsr/postgres-dev/${PGVERSION}
           export PGDATA=${PGHOME}/pg_data
           export PATH=$PATH:${PGHOME}/bin
           psql --version
