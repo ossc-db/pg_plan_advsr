@@ -1,0 +1,132 @@
+#
+# Copyright (c) 2020, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# 
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      # Target version of PostgreSQL
+      matrix:
+        version: [10, 11]
+    env:
+      PGVERSION: ${{ matrix.version }}
+         
+    steps:
+      - name: Get system info
+        run: |
+          hostname
+          whoami
+          lscpu
+          free
+          df -h
+          uname -a
+          gcc --version
+          pwd
+
+      - name: Build PostgreSQL  
+        run: |
+          psql --version
+          sudo service postgresql stop
+          sudo apt-get -y --purge remove postgresql libpq-dev libpq5 postgresql-client-common postgresql-common
+          sudo rm -rf /var/lib/postgresql
+          sudo apt-get update -qq
+          sudo apt-get -y install bc libpam-dev libedit-dev
+          git clone https://github.com/postgres/postgres.git postgres-dev
+          cd postgres-dev
+          echo "### ${PGVERSION} ###"
+          export PGHOME=/home/runner/work/actions_test/actions_test/postgres-dev/${PGVERSION}
+          export PGDATA=${PGHOME}/pg_data
+          export PATH=$PATH:${PGHOME}/bin
+          echo "### $PATH ###"
+          git checkout -b REL_${PGVERSION}_STABLE origin/REL_${PGVERSION}_STABLE
+          ./configure -q --prefix=${PGHOME}
+          make -s -j 2
+          make -s install
+          mkdir -p ${PGDATA}
+          initdb --no-locale --encoding=UTF8 -D ${PGDATA}
+          pg_ctl -V
+          pg_ctl -D ${PGDATA} start
+          psql -l
+          psql -c "select 1;" postgres
+
+      - name: Clone Extensions
+        run: |
+          pwd
+          git clone https://github.com/ossc-db/pg_hint_plan.git
+          git clone https://github.com/ossc-db/pg_store_plans.git
+          git clone https://github.com/ossc-db/pg_plan_advsr.git
+
+      - name: Checkout proper version of extensions for PG10
+        if: ${{ matrix.version == 10 }}
+        run: |
+            cd pg_hint_plan 
+            git checkout -b PG10 origin/PG10 && git checkout $(git describe --tag)
+            cd ../pg_store_plans 
+            git checkout -b R1.3 origin/R1.3 && git checkout $(git describe --tag)
+
+      - name: Checkout proper version of extensions for PG11
+        if: ${{ matrix.version == 11 }}
+        run: |
+            cd pg_hint_plan 
+            git checkout -b PG11 origin/PG11 && git checkout $(git describe --tag)
+            cd ../pg_store_plans 
+            git checkout -b R1.3 origin/R1.3 && git checkout $(git describe --tag)
+
+      - name: Checkout proper version of extensions for PG12
+        if: ${{ matrix.version == 12 }}
+        run: |
+            cd pg_hint_plan 
+            git checkout -b PG12 origin/PG12 && git checkout $(git describe --tag)
+            cd ../pg_store_plans 
+            git checkout $(git describe --tag)
+
+      - name: Copy files to pg_plan_advsr and build
+        run: |
+          echo "### $PGVERSION ###"
+          export PGHOME=/home/runner/work/actions_test/actions_test/postgres-dev/${PGVERSION}
+          export PGDATA=${PGHOME}/pg_data
+          export PATH=$PATH:${PGHOME}/bin
+          cd pg_hint_plan 
+          make -s && make -s install
+          cp pg_stat_statements.c ../pg_plan_advsr/
+          cp normalize_query.h ../pg_plan_advsr/
+          cd ../pg_store_plans 
+          make -s USE_PGXS=1 all install
+          cp pgsp_json*.[ch] ../pg_plan_advsr/
+          cd ../pg_plan_advsr/
+          git describe --alway
+          make
+          make install
+
+      - name: Startup PostgreSQL and create extensions
+        run: |
+          echo "### $PGVERSION ###"
+          export PGHOME=/home/runner/work/actions_test/actions_test/postgres-dev/${PGVERSION}
+          export PGDATA=${PGHOME}/pg_data
+          export PATH=$PATH:${PGHOME}/bin
+          echo "shared_preload_libraries = 'pg_plan_advsr,pg_hint_plan,pg_store_plans'" >> $PGDATA/postgresql.conf
+          pg_ctl -V
+          pg_ctl -D $PGDATA restart
+          sleep 3
+          psql -c "create extension pg_hint_plan;" postgres
+          psql -c "create extension pg_store_plans;" postgres
+          psql -c "create extension pg_plan_advsr;" postgres
+          psql -c "\dx" postgres
+
+      - name: Regression test
+        run: |
+          echo "### $PGVERSION ###"
+          export PGHOME=/home/runner/work/actions_test/actions_test/postgres-dev/${PGVERSION}
+          export PGDATA=${PGHOME}/pg_data
+          export PATH=$PATH:${PGHOME}/bin
+          psql --version
+          cd pg_plan_advsr
+          make installcheck
