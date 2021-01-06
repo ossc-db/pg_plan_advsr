@@ -88,6 +88,14 @@ jobs:
             cd ../pg_store_plans 
             git checkout $(git describe --tag)
 
+      - name: Checkout proper version of extensions for PG13
+        if: ${{ matrix.version == 13 }}
+        run: |
+            cd pg_hint_plan 
+            git checkout -b PG13 origin/PG13 && git checkout $(git describe --tag)
+            cd ../pg_store_plans 
+            git checkout $(git describe --tag)
+
       - name: Copy files to pg_plan_advsr and build
         run: |
           echo "### $PGVERSION ###"
