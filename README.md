@@ -434,7 +434,7 @@ Of course, any Pull request welcome!
 
 Tatsuro Yamada (yamatattsu at gmail dot com)
 
-Copyright (c) 2019, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+Copyright (c) 2019-2021, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 
 
 11 Acknowledgments
