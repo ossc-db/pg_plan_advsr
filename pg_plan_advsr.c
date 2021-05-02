@@ -54,6 +54,13 @@
 /* came from pg_store_plans 1.3 */
 #include "pgsp_json.h"
 
+/* "table_open/close" ware "heap_open/close" before PG12 */
+#if PG_VERSION_NUM < 120000
+#define table_open(relationId, lockmode) heap_open(relationId, lockmode)
+#define table_close(relation, lockmode) heap_close(relation, lockmode)
+#endif  /* PG_VERSION_NUM */
+
+
 PG_MODULE_MAGIC;
 
 
@@ -136,7 +143,12 @@ static void pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 											  ProcessUtilityContext context,
 											  ParamListInfo params, QueryEnvironment *queryEnv,
 											  DestReceiver *dest,
+#if PG_VERSION_NUM < 130000
 											  char *completionTag);
+#else
+											  QueryCompletion *qc);
+#endif  /* PG_VERSION_NUM */
+
 static void pg_plan_advsr_ExecutorStart_hook(QueryDesc *queryDesc, int eflags);
 static void pg_plan_advsr_ExecutorRun_hook(QueryDesc *queryDesc, ScanDirection direction,
 										   uint64 count, bool execute_once);
@@ -267,7 +279,7 @@ extensionOwner(void)
 	Form_pg_extension extensionForm = NULL;
 	Oid			extensionOwner;
 
-	relation = heap_open(ExtensionRelationId, AccessShareLock);
+	relation = table_open(ExtensionRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0], Anum_pg_extension_extname,
 				BTEqualStrategyNumber, F_NAMEEQ,
@@ -291,7 +303,7 @@ extensionOwner(void)
 						errmsg("pg_plan_advsr extension not loaded")));
 
 	systable_endscan(scandesc);
-	heap_close(relation, AccessShareLock);
+	table_close(relation, AccessShareLock);
 
 	return extensionOwner;
 }
@@ -398,14 +410,14 @@ insertPlanHistory(const char *norm_query_hash, const uint32 pgsp_queryid, const 
 	values[Anum_plan_history_timestamp - 1] = TimestampGetDatum(GetCurrentTimestamp());
 	isNulls[Anum_plan_history_timestamp - 1] = false;
 
-	rel = heap_open(relationId, RowExclusiveLock);
+	rel = table_open(relationId, RowExclusiveLock);
 	if (rel == NULL)
 		return false;
 	tupleDescriptor = RelationGetDescr(rel);
 	heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
 	CatalogTupleInsert(rel, heapTuple);
 	CommandCounterIncrement();
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 
 	return true;
 }
@@ -435,14 +447,14 @@ insertNormQueries(const char *norm_query_hash, const char *norm_query_string)
 	values[Anum_norm_queries_norm_query_string - 1] = CStringGetTextDatum(norm_query_string);
 	isNulls[Anum_norm_queries_norm_query_string - 1] = (norm_query_string == NULL) ? true : false;
 
-	rel = heap_open(relationId, RowExclusiveLock);
+	rel = table_open(relationId, RowExclusiveLock);
 	if (rel == NULL)
 		return false;
 	tupleDescriptor = RelationGetDescr(rel);
 	heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
 	CatalogTupleInsert(rel, heapTuple);
 	CommandCounterIncrement();
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 
 	return true;
 }
@@ -477,14 +489,14 @@ insertRawQueries(const char *raw_query_hash, const char *raw_query_string)
 	values[Anum_raw_queries_timestamp - 1] = TimestampGetDatum(GetCurrentTimestamp());
 	isNulls[Anum_raw_queries_timestamp - 1] = false;
 
-	rel = heap_open(relationId, RowExclusiveLock);
+	rel = table_open(relationId, RowExclusiveLock);
 	if (rel == NULL)
 		return false;
 	tupleDescriptor = RelationGetDescr(rel);
 	heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
 	CatalogTupleInsert(rel, heapTuple);
 	CommandCounterIncrement();
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 
 	return true;
 }
@@ -509,7 +521,7 @@ selectHints(const char *norm_query_string, const char *application_name, StringI
 	if (relationId == InvalidOid)
 		return;
 
-	rel = heap_open(relationId, AccessShareLock);
+	rel = table_open(relationId, AccessShareLock);
 	if (rel == NULL)
 		return;
 
@@ -536,7 +548,7 @@ selectHints(const char *norm_query_string, const char *application_name, StringI
 	}
 
 	systable_endscan(scanDescriptor);
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 
 }
 
@@ -560,7 +572,7 @@ deleteHints(const char *norm_query_string, const char *application_name)
 	if (relationId == InvalidOid)
 		return false;
 
-	rel = heap_open(relationId, AccessShareLock);
+	rel = table_open(relationId, AccessShareLock);
 	if (rel == NULL)
 		return false;
 
@@ -586,7 +598,7 @@ deleteHints(const char *norm_query_string, const char *application_name)
 	}
 
 	systable_endscan(scanDescriptor);
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 
 	return true;
 }
@@ -620,14 +632,14 @@ insertHints(const char *norm_query_string, const char *application_name, const c
 	values[Anum_hints_hints - 1] = CStringGetTextDatum(hints);
 	isNulls[Anum_hints_hints - 1] = (hints == NULL) ? true : false;
 
-	rel = heap_open(relationId, RowExclusiveLock);
+	rel = table_open(relationId, RowExclusiveLock);
 	if (rel == NULL)
 		return false;
 	tupleDescriptor = RelationGetDescr(rel);
 	heapTuple = heap_form_tuple(tupleDescriptor, values, isNulls);
 	CatalogTupleInsert(rel, heapTuple);
 	CommandCounterIncrement();
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 
 	return true;
 }
@@ -848,7 +860,11 @@ pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 								  ParamListInfo params,
 								  QueryEnvironment *queryEnv,
 								  DestReceiver *dest,
+#if PG_VERSION_NUM < 130000
 								  char *completionTag)
+#else
+								  QueryCompletion *qc)
+#endif  /* PG_VERSION_NUM */
 {
 	isExplain = query_or_expression_tree_walker((Node *) pstmt,
 												pg_plan_advsr_query_walker,
@@ -869,7 +885,11 @@ pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 								 params,
 								 queryEnv,
 								 dest,
+#if PG_VERSION_NUM < 130000
 								 completionTag);
+#else
+								 qc);
+#endif  /* PG_VERSION_NUM */
 	else
 		standard_ProcessUtility(
 								pstmt,
@@ -878,7 +898,11 @@ pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 								params,
 								queryEnv,
 								dest,
+#if PG_VERSION_NUM < 130000
 								completionTag);
+#else
+								qc);
+#endif  /* PG_VERSION_NUM */
 }
 
 /* ExecutorStart, Run and Finish are came from pg_store_plans.c */
@@ -1519,8 +1543,14 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 	ExplainPreScanNode(queryDesc->planstate, &rels_used);
 
 	es->rtable_names = select_rtable_names_for_explain(es->rtable, rels_used);
+#if PG_VERSION_NUM < 130000
 	es->deparse_cxt = deparse_context_for_plan_rtable(es->rtable,
 													  es->rtable_names);
+#else
+	es->deparse_cxt = deparse_context_for_plan_tree(queryDesc->plannedstmt,
+													es->rtable_names);
+#endif  /* PG_VERSION_NUM */
+
 	es->printed_subplans = NULL;
 
 	/*
