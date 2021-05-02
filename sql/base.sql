@@ -53,5 +53,5 @@ select lead_hint from plan_repo.plan_history order by id desc limit 1;
 select rows_hint from plan_repo.plan_history order by id desc limit 1;
 
 -- Clean-up
-\! rm -f pg10cte.tmpout pg10cte_fixed.tmpout
+\! rm -f results/pg10cte.tmpout results/pg10cte_fixed.tmpout
 
