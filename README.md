@@ -5,7 +5,7 @@ pg_plan_advsr is a PostgreSQL extension that provides Automated execution plan t
 This extension might help you if you have an analytic query which has many joins and aggregates and you'd like to get an efficient plan to reduce execution time. This extension is intended to use in a plan tuning phase at the end of system development.
 
 * Note: For now, This extension is in POC phase. Not production ready. 
-* master branch for PostgreSQL 10, 11 [![CI](https://github.com/ossc-db/pg_plan_advsr/workflows/CI/badge.svg)](https://github.com/ossc-db/pg_plan_advsr/actions?query=workflow%3ACI)
+* master branch for PostgreSQL 10, 11, and 12 [![CI](https://github.com/ossc-db/pg_plan_advsr/workflows/CI/badge.svg)](https://github.com/ossc-db/pg_plan_advsr/actions?query=workflow%3ACI)
 
 Contents
 ========
@@ -493,3 +493,4 @@ Kaname Furutani
 Kyotaro Horiguchi  
 Laurenz Albe  
 Nuko Yokohama  
+Sam Xu  
