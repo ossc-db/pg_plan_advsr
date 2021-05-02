@@ -292,7 +292,7 @@ There are two types of usage.
 
 pg_plan_advsr uses pg_hint_plan and pg_store_plans cooperatively.
 
-- PostgreSQL => 10.4
+- PostgreSQL => 10.4, 11, and 12
 - pg_hint_plan => 1.3.2
 - pg_store_plans => 1.3
 - RHEL/CentOS = 7.x (6.x is not tested but I suppose it works)
@@ -322,33 +322,69 @@ There are two methods to install the extension: Using Dockerfile or building pg_
 	
 	Operations
 	
-		$ wget https://github.com/ossc-db/pg_hint_plan/archive/REL10_1_3_2.tar.gz
-		$ wget https://github.com/ossc-db/pg_store_plans/archive/1.3.tar.gz
-		$ git clone https://github.com/ossc-db/pg_plan_advsr.git pg_plan_advsr
+	1. git clone extensions
 
-		$ tar xvzf REL10_1_3_2.tar.gz
-		$ tar xvzf 1.3.tar.gz
+		```
+		$ git clone https://github.com/ossc-db/pg_hint_plan.git
+		$ git clone https://github.com/ossc-db/pg_store_plans.git
+		$ git clone https://github.com/ossc-db/pg_plan_advsr.git
+		```
 
-		$ cp pg_hint_plan-REL10_1_3_2/pg_stat_statements.c pg_plan_advsr/
-		$ cp pg_hint_plan-REL10_1_3_2/normalize_query.h pg_plan_advsr/
-		$ cp pg_store_plans-1.3/pgsp_json*.[ch] pg_plan_advsr/
+	2. git checkout
+		
+		##### for PG10
+		```
+			$ cd pg_hint_plan 
+			$ git checkout -b PG10 origin/PG10 && git checkout $(git describe --tag)
+			$ cd ../pg_store_plans 
+			$ git checkout -b R1.3 origin/R1.3 && git checkout $(git describe --tag)
+		```
+	
+		##### for PG11
+		```
+			$ cd pg_hint_plan 
+			$ git checkout -b PG11 origin/PG11 && git checkout $(git describe --tag)
+			$ cd ../pg_store_plans 
+			$ git checkout -b R1.3 origin/R1.3 && git checkout $(git describe --tag)
+		```
+		
+		##### for PG12
+		```
+			$ cd pg_hint_plan 
+			$ git checkout -b PG12 origin/PG12 && git checkout $(git describe --tag)
+			$ cd ../pg_store_plans 
+			$ git checkout $(git describe --tag)
+		```
+		
+	3. build and install 
 
-		$ cd pg_hint_plan-REL10_1_3_2
-		$ make && make install
+		```
+		$ cd ../pg_hint_plan 
+		$ make -s && make -s install
+		$ cp pg_stat_statements.c ../pg_plan_advsr/
+		$ cp normalize_query.h ../pg_plan_advsr/
+		
+		$ cd ../pg_store_plans 
+		$ make -s USE_PGXS=1 all install
+		$ cp pgsp_json*.[ch] ../pg_plan_advsr/
+		
+		$ cd ../pg_plan_advsr/
+		$ git describe --alway
+		
+		$ make
+		$ make install
+		```
 
-		$ cd ../pg_store_plans-1.3
-		$ make USE_PGXS=1 all install
+	4. edit PostgreSQL.conf
 
-		$ cd ../pg_plan_advsr
-		$ make && make install 
-
+		```
 		$ vi $PGDATA/postgresql.conf
 
-		---- Add this line ----
+		---- Add this line ----------------------------------------------------------------
 		shared_preload_libraries = 'pg_hint_plan, pg_plan_advsr, pg_store_plans'
 		max_parallel_workers_per_gather = 0
 		max_parallel_workers = 0
-		----------------------
+		-----------------------------------------------------------------------------------
 
 		---- Consider increase these numbers (optional, these are based on your query) ----
 		geqo_threshold = 12 -> XX
@@ -356,15 +392,21 @@ There are two methods to install the extension: Using Dockerfile or building pg_
 		join_collapse_limit = 8 -> ZZ
 		-----------------------------------------------------------------------------------
 
-		---- Consider decrease the number (optional, it is based on your storage) ----
+		---- Consider decrease the number (optional, it is based on your storage) ---------
 		random_page_cost = 4 -> 2 (example)
-		------------------------------------------------------------------------------
+		-----------------------------------------------------------------------------------
+		```
 
+	5. run create extension commands on psql
+
+		```
 		$ pg_ctl start
 		$ psql 
-		# create extension pg_hint_plan;
-		# create extension pg_store_plans;
-		# create extension pg_plan_advsr;
+
+		create extension pg_hint_plan;
+		create extension pg_store_plans;
+		create extension pg_plan_advsr;
+		```
 
 
 	* You can try this extension with Join Order Benchmark as a example.
