@@ -243,7 +243,10 @@ There are two types of usage.
 	  select queryid, planid, plan from pg_store_plans where queryid='your pgsp_queryid in plan_history' order by first_call;
 	  
 	See shell script file as an example: [JOB/auto_tune_31c.sh](https://github.com/ossc-db/pg_plan_advsr/blob/master/JOB/auto_tune_31c.sh)
-	
+
+	Demo of auto tuning (3x speed)
+	![demo of auto tune](https://github.com/ossc-db/pg_plan_advsr/blob/master/JOB/img/auto_tune_31c_sql_demo.gif)
+
 	If you'd like to reproduce the execution plans on other environments, you'd be better to read the other.
 
 
