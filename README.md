@@ -5,7 +5,7 @@ pg_plan_advsr is a PostgreSQL extension that provides Automated execution plan t
 This extension might help you if you have an analytic query which has many joins and aggregates and you'd like to get an efficient plan to reduce execution time. This extension is intended to use in a plan tuning phase at the end of system development.
 
 * Note: For now, This extension is in POC phase. Not production ready. 
-* master branch for PostgreSQL 10, 11, and 12 [![CI](https://github.com/ossc-db/pg_plan_advsr/workflows/CI/badge.svg)](https://github.com/ossc-db/pg_plan_advsr/actions?query=workflow%3ACI)
+* master branch for PostgreSQL 10, 11, 12, and 13 [![CI](https://github.com/ossc-db/pg_plan_advsr/workflows/CI/badge.svg)](https://github.com/ossc-db/pg_plan_advsr/actions?query=workflow%3ACI)
 
 Contents
 ========
@@ -295,7 +295,7 @@ There are two types of usage.
 
 pg_plan_advsr uses pg_hint_plan and pg_store_plans cooperatively.
 
-- PostgreSQL => 10.4, 11, and 12
+- PostgreSQL => 10.4, 11, 12, and 13
 - pg_hint_plan => 1.3.2
 - pg_store_plans => 1.3
 - RHEL/CentOS = 7.x (6.x is not tested but I suppose it works)
@@ -358,6 +358,15 @@ There are two methods to install the extension: Using Dockerfile or building pg_
 			$ cd ../pg_store_plans 
 			$ git checkout $(git describe --tag)
 		```
+
+		##### for PG13
+		```
+			$ cd pg_hint_plan 
+			$ git checkout -b PG13 origin/PG13 && git checkout $(git describe --tag)
+			$ cd ../pg_store_plans 
+			$ git checkout $(git describe --tag)
+		```
+
 		
 	3. build and install 
 
