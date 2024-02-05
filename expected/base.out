@@ -1,5 +1,21 @@
 LOAD 'pg_hint_plan';
 LOAD 'pg_plan_advsr';
+LOAD 'pg_store_plans';
+-- Clean-up
+truncate hint_plan.hints;
+truncate plan_repo.norm_queries;
+truncate plan_repo.raw_queries;
+truncate plan_repo.plan_history;
+select pg_store_plans_reset();
+ pg_store_plans_reset 
+----------------------
+ 
+(1 row)
+
+-- Enable auto-tuning
+set max_parallel_workers to 0;
+set max_parallel_workers_per_gather to 0;
+set random_page_cost = 2;
 set pg_plan_advsr.quieted to on;
 select pg_plan_advsr_enable_feedback();
  pg_plan_advsr_enable_feedback 
@@ -7,126 +23,111 @@ select pg_plan_advsr_enable_feedback();
  
 (1 row)
 
--- CTE (less than PG12)
--- First iteration
-\o results/pg10cte.tmpout
+-- Execute the query 4 times
+\o results/auto-tuning.tmpout
 explain analyze 
-with x as (
-	select * 
-	from   t1 
-	limit 201
-) 
 select * 
-from (  select *
-		from   t1 
-		where  a in (select a from x)
-		) tmp,
-		  t2 
-where tmp.a = t2.a;
+from (select a.c1, a.c2 from table_a a, table_b b where a.c1 = b.c1 and a.c2 = b.c2) t1
+join (select c.c1, c.c2 from table_c c where c.c1 > 1 and c.c2 >= 10) t2
+on t1.c1 = t2.c1 and t1.c2 = t2.c2;
+explain analyze 
+select * 
+from (select a.c1, a.c2 from table_a a, table_b b where a.c1 = b.c1 and a.c2 = b.c2) t1
+join (select c.c1, c.c2 from table_c c where c.c1 > 1 and c.c2 >= 10) t2
+on t1.c1 = t2.c1 and t1.c2 = t2.c2;
+explain analyze 
+select * 
+from (select a.c1, a.c2 from table_a a, table_b b where a.c1 = b.c1 and a.c2 = b.c2) t1
+join (select c.c1, c.c2 from table_c c where c.c1 > 1 and c.c2 >= 10) t2
+on t1.c1 = t2.c1 and t1.c2 = t2.c2;
+explain analyze 
+select * 
+from (select a.c1, a.c2 from table_a a, table_b b where a.c1 = b.c1 and a.c2 = b.c2) t1
+join (select c.c1, c.c2 from table_c c where c.c1 > 1 and c.c2 >= 10) t2
+on t1.c1 = t2.c1 and t1.c2 = t2.c2;
 \o
-\! sql/maskout.sh results/pg10cte.tmpout
+\! sql/maskout.sh results/auto-tuning.tmpout
                                                           QUERY PLAN                                                           
 -------------------------------------------------------------------------------------------------------------------------------
- Hash Join  (cost=xxx rows=500000 width=xxx) (actual time=xxx rows=201 loops=1)
-   Hash Cond: (t2.a = t1.a)
-   CTE x
-     ->  Limit  (cost=xxx rows=201 width=xxx) (actual time=xxx rows=201 loops=1)
-           ->  Seq Scan on t1 t1_1  (cost=xxx rows=1000000 width=xxx) (actual time=xxx rows=201 loops=1)
-   ->  Seq Scan on t2  (cost=xxx rows=1000000 width=xxx) (actual time=xxx rows=1000000 loops=1)
-   ->  Hash  (cost=xxx rows=500000 width=xxx) (actual time=xxx rows=201 loops=1)
-         ->  Nested Loop  (cost=xxx rows=500000 width=xxx) (actual time=xxx rows=201 loops=1)
-               ->  HashAggregate  (cost=xxx rows=200 width=xxx) (actual time=xxx rows=201 loops=1)
-                     Group Key: x.a
-                     ->  CTE Scan on x  (cost=xxx rows=201 width=xxx) (actual time=xxx rows=201 loops=1)
-               ->  Index Scan using i_t1_a on t1  (cost=xxx rows=1 width=xxx) (actual time=xxx rows=1 loops=201)
-                     Index Cond: (a = x.a)
-(16 rows)
+ Nested Loop  (cost=xxx rows=1 width=xxx) (actual time=xxx rows=9991 loops=1)
+   ->  Hash Join  (cost=xxx rows=1 width=xxx) (actual time=xxx rows=10000 loops=1)
+         Hash Cond: ((a.c1 = b.c1) AND (a.c2 = b.c2))
+         ->  Seq Scan on table_a a  (cost=xxx rows=10000 width=xxx) (actual time=xxx rows=10000 loops=1)
+         ->  Hash  (cost=xxx rows=10000 width=xxx) (actual time=xxx rows=10000 loops=1)
+               ->  Seq Scan on table_b b  (cost=xxx rows=10000 width=xxx) (actual time=xxx rows=10000 loops=1)
+   ->  Index Scan using ind_c_c2 on table_c c  (cost=xxx rows=1 width=xxx) (actual time=xxx rows=1 loops=10000)
+         Index Cond: ((c2 = a.c2) AND (c2 >= 10))
+         Filter: ((c1 > 1) AND (a.c1 = c1))
+(12 rows)
 
--- Hints
-select scan_hint from plan_repo.plan_history;
-               scan_hint               
----------------------------------------
- SEQSCAN(t2) SEQSCAN(x) INDEXSCAN(t1) 
-(1 row)
-
-select join_hint from plan_repo.plan_history;
-     join_hint      
---------------------
- HASHJOIN(t2 t1 x) +
- NESTLOOP(t1 x) 
-(1 row)
-
-select lead_hint from plan_repo.plan_history;
-        lead_hint        
--------------------------
- LEADING( (t2 (x t1 )) )
-(1 row)
-
-select rows_hint from plan_repo.plan_history;
-      rows_hint      
----------------------
- ROWS(t2 t1 x #201) +
- ROWS(t1 x #201) 
-(1 row)
-
--- Second iteration
-\o results/pg10cte_fixed.tmpout
-explain analyze 
-with x as (
-	select * 
-	from   t1 
-	limit 201
-) 
-select * 
-from (  select *
-		from   t1 
-		where  a in (select a from x)
-		) tmp,
-		  t2 
-where tmp.a = t2.a;
-\o
-\! sql/maskout.sh results/pg10cte_fixed.tmpout
-                                                        QUERY PLAN                                                         
----------------------------------------------------------------------------------------------------------------------------
- Nested Loop  (cost=xxx rows=201 width=xxx) (actual time=xxx rows=201 loops=1)
-   CTE x
-     ->  Limit  (cost=xxx rows=201 width=xxx) (actual time=xxx rows=201 loops=1)
-           ->  Seq Scan on t1 t1_1  (cost=xxx rows=1000000 width=xxx) (actual time=xxx rows=201 loops=1)
-   ->  Nested Loop  (cost=xxx rows=201 width=xxx) (actual time=xxx rows=201 loops=1)
-         ->  HashAggregate  (cost=xxx rows=200 width=xxx) (actual time=xxx rows=201 loops=1)
-               Group Key: x.a
-               ->  CTE Scan on x  (cost=xxx rows=201 width=xxx) (actual time=xxx rows=201 loops=1)
-         ->  Index Scan using i_t1_a on t1  (cost=xxx rows=1 width=xxx) (actual time=xxx rows=1 loops=201)
-               Index Cond: (a = x.a)
-   ->  Index Scan using i_t2_a on t2  (cost=xxx rows=1 width=xxx) (actual time=xxx rows=1 loops=201)
-         Index Cond: (a = t1.a)
+                                                          QUERY PLAN                                                           
+-------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=xxx rows=9991 width=xxx) (actual time=xxx rows=9991 loops=1)
+   ->  Hash Join  (cost=xxx rows=1 width=xxx) (actual time=xxx rows=9991 loops=1)
+         Hash Cond: ((c.c1 = a.c1) AND (c.c2 = a.c2))
+         ->  Seq Scan on table_c c  (cost=xxx rows=9990 width=xxx) (actual time=xxx rows=9991 loops=1)
+               Filter: ((c1 > 1) AND (c2 >= 10))
+               Rows Removed by Filter: 9
+         ->  Hash  (cost=xxx rows=10000 width=xxx) (actual time=xxx rows=10000 loops=1)
+               ->  Seq Scan on table_a a  (cost=xxx rows=10000 width=xxx) (actual time=xxx rows=10000 loops=1)
+   ->  Index Scan using ind_b_c2 on table_b b  (cost=xxx rows=1 width=xxx) (actual time=xxx rows=1 loops=9991)
+         Index Cond: (c2 = a.c2)
+         Filter: (a.c1 = c1)
 (14 rows)
 
--- Check Hints. Rows_hint must be NULL since estimation error was fixed.
-select scan_hint from plan_repo.plan_history order by id desc limit 1;
-                scan_hint                
------------------------------------------
- SEQSCAN(x) INDEXSCAN(t1) INDEXSCAN(t2) 
-(1 row)
+                                                          QUERY PLAN                                                           
+-------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=xxx rows=9991 width=xxx) (actual time=xxx rows=9991 loops=1)
+   ->  Hash Join  (cost=xxx rows=1 width=xxx) (actual time=xxx rows=9991 loops=1)
+         Hash Cond: ((c.c1 = b.c1) AND (c.c2 = b.c2))
+         ->  Seq Scan on table_c c  (cost=xxx rows=9990 width=xxx) (actual time=xxx rows=9991 loops=1)
+               Filter: ((c1 > 1) AND (c2 >= 10))
+               Rows Removed by Filter: 9
+         ->  Hash  (cost=xxx rows=10000 width=xxx) (actual time=xxx rows=10000 loops=1)
+               ->  Seq Scan on table_b b  (cost=xxx rows=10000 width=xxx) (actual time=xxx rows=10000 loops=1)
+   ->  Index Scan using ind_a_c2 on table_a a  (cost=xxx rows=1 width=xxx) (actual time=xxx rows=1 loops=9991)
+         Index Cond: (c2 = b.c2)
+         Filter: (b.c1 = c1)
+(14 rows)
 
-select join_hint from plan_repo.plan_history order by id desc limit 1;
-     join_hint      
---------------------
- NESTLOOP(t2 t1 x) +
- NESTLOOP(t1 x) 
-(1 row)
+                                                          QUERY PLAN                                                           
+-------------------------------------------------------------------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=9991 width=xxx) (actual time=xxx rows=9991 loops=1)
+   Hash Cond: ((a.c1 = b.c1) AND (a.c2 = b.c2))
+   ->  Hash Join  (cost=xxx rows=9991 width=xxx) (actual time=xxx rows=9991 loops=1)
+         Hash Cond: ((c.c1 = a.c1) AND (c.c2 = a.c2))
+         ->  Seq Scan on table_c c  (cost=xxx rows=9990 width=xxx) (actual time=xxx rows=9991 loops=1)
+               Filter: ((c1 > 1) AND (c2 >= 10))
+               Rows Removed by Filter: 9
+         ->  Hash  (cost=xxx rows=10000 width=xxx) (actual time=xxx rows=10000 loops=1)
+               ->  Seq Scan on table_a a  (cost=xxx rows=10000 width=xxx) (actual time=xxx rows=10000 loops=1)
+   ->  Hash  (cost=xxx rows=10000 width=xxx) (actual time=xxx rows=10000 loops=1)
+         ->  Seq Scan on table_b b  (cost=xxx rows=10000 width=xxx) (actual time=xxx rows=10000 loops=1)
+(15 rows)
 
-select lead_hint from plan_repo.plan_history order by id desc limit 1;
-        lead_hint        
--------------------------
- LEADING( ((x t1 )t2 ) )
-(1 row)
+-- Check the result of auto-tuning
+select pgsp_queryid, rows_hint, diff_of_joins, lead_hint, join_hint, scan_hint, join_cnt from plan_repo.plan_history order by id desc limit 4;
+ pgsp_queryid |     rows_hint      | diff_of_joins |       lead_hint       |    join_hint     |              scan_hint              | join_cnt 
+--------------+--------------------+---------------+-----------------------+------------------+-------------------------------------+----------
+    461058980 |                    |             0 | LEADING( ((c a )b ) ) | HASHJOIN(a b c) +| SEQSCAN(c) SEQSCAN(a) SEQSCAN(b)    |        2
+              |                    |               |                       | HASHJOIN(a c)    |                                     | 
+    461058980 | ROWS(b c #9991)    |          9990 | LEADING( ((c b )a ) ) | NESTLOOP(a b c) +| SEQSCAN(c) SEQSCAN(b) INDEXSCAN(a)  |        2
+              |                    |               |                       | HASHJOIN(b c)    |                                     | 
+    461058980 | ROWS(a c #9991)    |          9990 | LEADING( ((c a )b ) ) | NESTLOOP(a b c) +| SEQSCAN(c) SEQSCAN(a) INDEXSCAN(b)  |        2
+              |                    |               |                       | HASHJOIN(a c)    |                                     | 
+    461058980 | ROWS(a b c #9991) +|         19989 | LEADING( ((a b )c ) ) | NESTLOOP(a b c) +| SEQSCAN(a) SEQSCAN(b) INDEXSCAN(c)  |        2
+              | ROWS(a b #10000)   |               |                       | HASHJOIN(a b)    |                                     | 
+(4 rows)
 
-select rows_hint from plan_repo.plan_history order by id desc limit 1;
- rows_hint 
------------
- 
+select norm_query_string, hints from hint_plan.hints;
+                                    norm_query_string                                    |                        hints                         
+-----------------------------------------------------------------------------------------+------------------------------------------------------
+ explain analyze                                                                        +|  ROWS(a b c #9991)                                  +
+ select *                                                                               +| ROWS(a b #10000)  ROWS(a c #9991)  ROWS(b c #9991)  
+ from (select a.c1, a.c2 from table_a a, table_b b where a.c1 = b.c1 and a.c2 = b.c2) t1+| 
+ join (select c.c1, c.c2 from table_c c where c.c1 > ? and c.c2 >= ?) t2                +| 
+ on t1.c1 = t2.c1 and t1.c2 = t2.c2;                                                     | 
 (1 row)
 
 -- Clean-up
-\! rm -f results/pg10cte.tmpout results/pg10cte_fixed.tmpout
+\! rm -f results/auto-tuning.tmpout
