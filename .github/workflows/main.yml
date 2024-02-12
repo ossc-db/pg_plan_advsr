@@ -62,7 +62,7 @@ jobs:
           pwd
           git clone https://github.com/ossc-db/pg_hint_plan.git
           git clone https://github.com/ossc-db/pg_store_plans.git
-          git clone https://github.com/ossc-db/pg_plan_advsr.git
+          git clone https://github.com/yamatattsu/pg_plan_advsr.git
 
       - name: Checkout proper version of extensions for PG10
         if: ${{ matrix.version == 10 }}
