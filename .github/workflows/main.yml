@@ -146,3 +146,4 @@ jobs:
           psql --version
           cd pg_plan_advsr
           make installcheck
+          cat /home/runner/work/pg_plan_advsr/pg_plan_advsr/pg_plan_advsr/regression.diffs
