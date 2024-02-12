@@ -42,11 +42,12 @@
 #include "libpq-int.h"
 #if PG_VERSION_NUM >= 110000
 #include "utils/rel.h"
-#endif
+#endif  /* PG_VERSION_NUM */
+
 #if PG_VERSION_NUM >= 120000
 #include "access/table.h"
 #include "optimizer/optimizer.h"
-#endif
+#endif  /* PG_VERSION_NUM */
 
 /* came from pg_hint_plan REL10_1_3_2 */
 #include "normalize_query.h"
@@ -137,9 +138,18 @@ PG_FUNCTION_INFO_V1(pg_plan_advsr_disable_feedback);
 Datum		pg_plan_advsr_disable_feedback(PG_FUNCTION_ARGS);
 
 /* Hook functions for pg_plan_advsr */
-static void pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query);
+static void pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query
+#if PG_VERSION_NUM < 140000
+												 );
+#else
+												 , JumbleState *jstate);
+#endif  /* PG_VERSION_NUM */
+
 static void pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 											  const char *queryString,
+#if PG_VERSION_NUM >= 140000
+											  bool readOnlyTree,
+#endif  /* PG_VERSION_NUM */
 											  ProcessUtilityContext context,
 											  ParamListInfo params, QueryEnvironment *queryEnv,
 											  DestReceiver *dest,
@@ -158,8 +168,11 @@ static void pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc);
 /* Utility functions */
 static bool pg_plan_advsr_query_walker(Node *parsetree);
 
+
+#if PG_VERSION_NUM < 140000
 /* This function came from pg_hint_plan.c */
 static const char *get_query_string(ParseState *pstate, Query *query, Query **jumblequery);
+#endif  /* PG_VERSION_NUM */
 
 ExplainState *pg_plan_advsr_NewExplainState(void);
 
@@ -789,23 +802,35 @@ pg_plan_advsr_disable_feedback(PG_FUNCTION_ARGS)
 
 /* To get normalized query like a pg_hint_plan.c */
 static void
-pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query)
+pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query
+#if PG_VERSION_NUM < 140000
+									  )
+#else
+									  , JumbleState *jstate)
+#endif  /* PG_VERSION_NUM */
 {
 	const char *query_str;
 
 	if (prev_post_parse_analyze_hook)
-		prev_post_parse_analyze_hook(pstate, query);
+		prev_post_parse_analyze_hook(pstate, query
+#if PG_VERSION_NUM < 140000
+									  );
+#else
+									  , jstate);
+#endif  /* PG_VERSION_NUM */
 
 	/* Create normalized query for later use */
 	if (pg_plan_advsr_is_enabled)
 	{
-		int			query_len;
+		int	  		query_len;
+#if PG_VERSION_NUM < 140000
 		pgssJumbleState jstate;
 		Query	   *jumblequery;
+#endif  /* PG_VERSION_NUM */
 
-		/*
-		 * elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook start ##");
-		 */
+		elog(DEBUG1, "##pg_plan_advsr_post_parse_analyze_hook start ##");
+
+#if PG_VERSION_NUM < 140000
 		query_str = get_query_string(pstate, query, &jumblequery);
 
 		if (query_str && jumblequery)
@@ -842,9 +867,21 @@ pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query)
 										  GetDatabaseEncoding());
 
 		}
-		/*
-		 * elog(INFO, "##pg_plan_advsr_post_parse_analyze_hook end ##");
-		 */
+#else
+		query_str = pstate->p_sourcetext;
+
+		if (!jstate)
+			jstate = JumbleQuery(query, query_str);
+
+		if (!jstate)
+			return;
+
+		query_len = strlen(query_str) + 1;
+		normalized_query =
+			generate_normalized_query(jstate, query_str, 0, &query_len);
+
+#endif  /* PG_VERSION_NUM */
+		elog(DEBUG1, "##pg_plan_advsr_post_parse_analyze_hook end ##");
 	}
 }
 
@@ -856,6 +893,9 @@ pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query)
 static void
 pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 								  const char *queryString,
+#if PG_VERSION_NUM >= 140000
+											  bool readOnlyTree,
+#endif  /* PG_VERSION_NUM */
 								  ProcessUtilityContext context,
 								  ParamListInfo params,
 								  QueryEnvironment *queryEnv,
@@ -881,6 +921,9 @@ pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 		prev_ProcessUtility_hook(
 								 pstmt,
 								 queryString,
+#if PG_VERSION_NUM >= 140000
+								 readOnlyTree,
+#endif  /* PG_VERSION_NUM */
 								 context,
 								 params,
 								 queryEnv,
@@ -894,6 +937,9 @@ pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 		standard_ProcessUtility(
 								pstmt,
 								queryString,
+#if PG_VERSION_NUM >= 140000
+								 readOnlyTree,
+#endif  /* PG_VERSION_NUM */
 								context,
 								params,
 								queryEnv,
@@ -926,7 +972,11 @@ pg_plan_advsr_ExecutorStart_hook(QueryDesc *queryDesc, int eflags)
 		MemoryContext oldcxt;
 
 		oldcxt = MemoryContextSwitchTo(queryDesc->estate->es_query_cxt);
-		queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_ALL);
+		queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_ALL
+#if PG_VERSION_NUM >= 140000
+										  , false
+#endif  /* PG_VERSION_NUM */
+										 );
 		MemoryContextSwitchTo(oldcxt);
 	}
 
@@ -1144,7 +1194,8 @@ pg_plan_advsr_query_walker(Node *parsetree)
 	return false;
 }
 
-/* This function came from pg_plan_hint.c */
+#if PG_VERSION_NUM < 140000
+/* This function came from pg_hint_plan.c */
 /*
  * Get client-supplied query string. Addtion to that the jumbled query is
  * supplied if the caller requested. From the restriction of JumbleQuery, some
@@ -1243,6 +1294,7 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 
 	return p;
 }
+#endif  /* PG_VERSION_NUM */
 
 /*
  * pg_plan_advsr_planstate_tree_walker, pg_plan_advsr_planstate_walk_subplans and
