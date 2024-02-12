@@ -15,7 +15,7 @@ jobs:
     strategy:
       # Target version of PostgreSQL
       matrix:
-        version: [10, 11, 12, 13, 14]
+        version: [12, 13, 14]
     env:
       PGVERSION: ${{ matrix.version }}
          
