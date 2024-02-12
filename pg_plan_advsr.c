@@ -871,8 +871,14 @@ pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query
 		query_str = pstate->p_sourcetext;
 
 		if (!jstate)
+#endif  /* PG_VERSION_NUM */
+#if PG_VERSION_NUM >= 160000
+			jstate = JumbleQuery(query);
+#else
 			jstate = JumbleQuery(query, query_str);
+#endif  /* PG_VERSION_NUM */
 
+#if PG_VERSION_NUM >= 140000
 		if (!jstate)
 			return;
 
