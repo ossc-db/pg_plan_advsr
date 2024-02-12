@@ -1674,6 +1674,11 @@ void
 store_info_to_tables(double totaltime, const char *sourcetext)
 {
 	char		md5[33];
+
+#if PG_VERSION_NUM >= 150000
+	const char *errstr = NULL;
+#endif  /* PG_VERSION_NUM */
+
 	char	   *aplname;
 	StringInfo	prev_rows_hint;
 	StringInfo	new_hint;
@@ -1685,7 +1690,12 @@ store_info_to_tables(double totaltime, const char *sourcetext)
 	/*
 	 * Calculate MD5 hash of the normalized query as a norm_query_hash
 	 */
-	if (!pg_md5_hash(normalized_query, strlen(normalized_query), md5))
+	if (!pg_md5_hash(normalized_query, strlen(normalized_query), md5
+#if PG_VERSION_NUM >= 150000
+					 , &errstr))
+#else
+					))
+#endif  /* PG_VERSION_NUM */
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
