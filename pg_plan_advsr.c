@@ -867,16 +867,18 @@ pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query
 										  GetDatabaseEncoding());
 
 		}
-#else
+#endif
+
+#if PG_VERSION_NUM >= 140000
 		query_str = pstate->p_sourcetext;
 
 		if (!jstate)
-#endif  /* PG_VERSION_NUM */
+#endif
 #if PG_VERSION_NUM >= 160000
 			jstate = JumbleQuery(query);
-#else
+#elif PG_VERSION_NUM >= 140000
 			jstate = JumbleQuery(query, query_str);
-#endif  /* PG_VERSION_NUM */
+#endif
 
 #if PG_VERSION_NUM >= 140000
 		if (!jstate)
@@ -885,8 +887,8 @@ pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query
 		query_len = strlen(query_str) + 1;
 		normalized_query =
 			generate_normalized_query(jstate, query_str, 0, &query_len);
-
 #endif  /* PG_VERSION_NUM */
+
 		elog(DEBUG1, "##pg_plan_advsr_post_parse_analyze_hook end ##");
 	}
 }
