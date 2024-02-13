@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020-2021, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# Copyright (c) 2020-2024, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 # 
 name: CI
 
@@ -15,7 +15,7 @@ jobs:
     strategy:
       # Target version of PostgreSQL
       matrix:
-        version: [12, 13, 14]
+        version: [12, 13, 14, 15, 16]
     env:
       PGVERSION: ${{ matrix.version }}
          
