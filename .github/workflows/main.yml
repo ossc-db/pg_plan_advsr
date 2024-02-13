@@ -64,22 +64,6 @@ jobs:
           git clone https://github.com/ossc-db/pg_store_plans.git
           git clone https://github.com/yamatattsu/pg_plan_advsr.git
 
-      - name: Checkout proper version of extensions for PG10
-        if: ${{ matrix.version == 10 }}
-        run: |
-            cd pg_hint_plan 
-            git checkout -b PG10 origin/PG10 && git checkout $(git describe --tag)
-            cd ../pg_store_plans 
-            git checkout -b R1.3 origin/R1.3 && git checkout $(git describe --tag)
-
-      - name: Checkout proper version of extensions for PG11
-        if: ${{ matrix.version == 11 }}
-        run: |
-            cd pg_hint_plan 
-            git checkout -b PG11 origin/PG11 && git checkout $(git describe --tag)
-            cd ../pg_store_plans 
-            git checkout -b R1.3 origin/R1.3 && git checkout $(git describe --tag)
-
       - name: Checkout proper version of extensions for PG12
         if: ${{ matrix.version == 12 }}
         run: |
@@ -101,6 +85,22 @@ jobs:
         run: |
             cd pg_hint_plan 
             git checkout -b PG14 origin/PG14 && git checkout $(git describe --tag)
+            cd ../pg_store_plans 
+            git checkout $(git describe --tag)
+            
+      - name: Checkout proper version of extensions for PG15
+        if: ${{ matrix.version == 15 }}
+        run: |
+            cd pg_hint_plan 
+            git checkout -b PG15 origin/PG15 && git checkout $(git describe --tag)
+            cd ../pg_store_plans 
+            git checkout $(git describe --tag)
+
+      - name: Checkout proper version of extensions for PG16
+        if: ${{ matrix.version == 16 }}
+        run: |
+            cd pg_hint_plan 
+            git checkout -b PG16 origin/PG16 && git checkout $(git describe --tag)
             cd ../pg_store_plans 
             git checkout $(git describe --tag)
             
@@ -128,7 +128,7 @@ jobs:
           export PGHOME=/home/runner/work/pg_plan_advsr/pg_plan_advsr/postgres-dev/${PGVERSION}
           export PGDATA=${PGHOME}/pg_data
           export PATH=$PATH:${PGHOME}/bin
-          echo "shared_preload_libraries = 'pg_plan_advsr,pg_hint_plan,pg_store_plans'" >> $PGDATA/postgresql.conf
+          echo "shared_preload_libraries = 'pg_hint_plan, pg_plan_advsr, pg_store_plans'" >> $PGDATA/postgresql.conf
           pg_ctl -V
           pg_ctl -D $PGDATA restart
           sleep 3
@@ -145,5 +145,6 @@ jobs:
           export PATH=$PATH:${PGHOME}/bin
           psql --version
           cd pg_plan_advsr
-          make installcheck
-          cat /home/runner/work/pg_plan_advsr/pg_plan_advsr/pg_plan_advsr/regression.diffs
+          make installcheck || status=$?
+          if test -f regression.diffs; then cat regression.diffs; fi
+          exit $status
