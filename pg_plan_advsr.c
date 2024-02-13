@@ -4,7 +4,7 @@
  *		Automatic plan tuning by correcting row count estimation errors
  *		using a feedback loop between planner and executor.
  *
- * Copyright (c) 2019-2021, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+ * Copyright (c) 2019-2024, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
  *
  * IDENTIFICATION
  *	  pg_plan_advsr.c
