@@ -73,7 +73,7 @@ typedef struct LeadingContext
 {
 	StringInfo	lead_str;
 	ExplainState *es;
-}			LeadingContext;
+} LeadingContext;
 
 /* scan method/join method/leading hints */
 static StringInfo scan_str;
