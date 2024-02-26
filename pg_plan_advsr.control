@@ -1,4 +1,4 @@
-comment = 'auto plan tuning'
+comment = 'advisory feature to get an efficient execution plan'
 module_pathname = '$libdir/pg_plan_advsr'
 relocatable = true
 default_version = '0.0'
