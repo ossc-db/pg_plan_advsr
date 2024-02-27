@@ -49,10 +49,10 @@
 #include "optimizer/optimizer.h"
 #endif  /* PG_VERSION_NUM */
 
-/* came from pg_hint_plan REL10_1_3_2 */
+/* came from pg_hint_plan */
 #include "normalize_query.h"
 
-/* came from pg_store_plans 1.3 */
+/* came from pg_store_plans */
 #include "pgsp_json.h"
 
 /* "table_open/close" ware "heap_open/close" before PG12 */
@@ -81,8 +81,20 @@ static StringInfo join_str;
 static StringInfo rows_str;
 LeadingContext *leadcxt;
 
-/* hash value made by queryDesc->sourceText */
-static uint32 pgsp_queryid;
+/* In PostgreSQL 11, queryid becomes a uint64 internally. */
+#if PG_VERSION_NUM >= 110000
+typedef uint64 queryid_t;
+#define PGSP_NO_QUERYID     UINT64CONST(0)
+#else
+typedef uint32 queryid_t;
+#define PGSP_NO_QUERYID     0
+#endif
+
+/*
+ *  For PG13 or below, pgsp_queryid is made by hash_query with Desc->sourceText.
+ *  For PG14 and above, it uses compute_query_id created in core.
+ */
+static queryid_t pgsp_queryid;
 
 /* hash value made by normalized_plan */
 static uint32 pgsp_planid;
@@ -267,7 +279,7 @@ double		get_diff_ratio(double est_rows, double act_rows);
 static Oid	extensionOwner(void);
 static Oid	resolveRelationId(text *relationName, bool missingOk);
 static uint64 getNextVal(const char *sequence);
-static bool insertPlanHistory(const char *norm_query_hash, const uint32 pgsp_queryid, const uint32 pgsp_planid,
+static bool insertPlanHistory(const char *norm_query_hash, const uint64 pgsp_queryid, const uint64 pgsp_planid,
 							  const double execution_time, const char *rows_hint, const char *scan_hint,
 							  const char *join_hint, const char *lead_hint,
 							  const double diff_of_scans, const double max_diff_ratio_scan,
@@ -364,7 +376,7 @@ getNextVal(const char *sequence)
  * Insert a row into plan_repo.plan_history table.
  */
 static bool
-insertPlanHistory(const char *norm_query_hash, const uint32 pgsp_queryid, const uint32 pgsp_planid,
+insertPlanHistory(const char *norm_query_hash, const uint64 pgsp_queryid, const uint64 pgsp_planid,
 				  const double execution_time, const char *rows_hint, const char *scan_hint,
 				  const char *join_hint, const char *lead_hint,
 				  const double diff_of_scans, const double max_diff_ratio_scan,
@@ -391,9 +403,15 @@ insertPlanHistory(const char *norm_query_hash, const uint32 pgsp_queryid, const 
 
 	values[Anum_plan_history_norm_query_hash - 1] = CStringGetTextDatum(norm_query_hash);
 	isNulls[Anum_plan_history_norm_query_hash - 1] = (norm_query_hash == NULL) ? true : false;
+
+#if PG_VERSION_NUM >= 140000
+	values[Anum_plan_history_pgsp_queryid - 1] = Int64GetDatum(pgsp_queryid);
+#else
 	values[Anum_plan_history_pgsp_queryid - 1] = Int32GetDatum(pgsp_queryid);
+#endif  /* PG_VERSION_NUM */
 	isNulls[Anum_plan_history_pgsp_queryid - 1] = false;
-	values[Anum_plan_history_pgsp_planid - 1] = Int32GetDatum(pgsp_planid);
+
+	values[Anum_plan_history_pgsp_planid - 1] = Int64GetDatum(pgsp_planid);
 	isNulls[Anum_plan_history_pgsp_planid - 1] = false;
 	values[Anum_plan_history_execution_time - 1] = Float8GetDatum(execution_time);
 	isNulls[Anum_plan_history_execution_time - 1] = false;
@@ -1079,7 +1097,7 @@ pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
 
 /*
  * Create pg_store_plans's planid
- * This function is inspired store_entry() and pgsp_ExecutorEnd() in pg_store_plans 1.1.
+ * This function is inspired store_entry() and pgsp_ExecutorEnd() in pg_store_plans.
  */
 uint32
 create_pgsp_planid(QueryDesc *queryDesc)
@@ -1091,7 +1109,7 @@ create_pgsp_planid(QueryDesc *queryDesc)
 	bool		log_timing = false;
 	bool		log_triggers = false;
 	char	   *normalized_plan = NULL;
-	uint32		planid;			/* plan identifier */
+	int64		planid;			/* plan identifier */
 
 	/* get the current values of pg_store_plans setting */
 	/* GetConfigOptionByName("pg_store_plans.log_analyze", NULL, false); */
@@ -1148,7 +1166,7 @@ create_pgsp_planid(QueryDesc *queryDesc)
 	return planid;
 }
 
-/* This function cames from pg_store_plans 1.1. */
+/* This function cames from pg_store_plans */
 static uint32
 hash_query(const char *query)
 {
@@ -1636,15 +1654,21 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 	CreateLeadingHint(ps, leadcxt);
 	appendStringInfo(leadcxt->lead_str, " )");
 
+#if PG_VERSION_NUM < 140000
 	/* queryId is made by pg_stat_statements */
-	pgsp_queryid = hash_query(queryDesc->sourceText);
+	pgsp_queryid = (queryid_t) hash_query(queryDesc->sourceText);
+#else
+	/* use compute_query_id from PG14 and above */
+	pgsp_queryid = queryDesc->plannedstmt->queryId;
+#endif  /* PG_VERSION_NUM */
+
 	pgsp_planid = create_pgsp_planid(queryDesc);
 	totaltime = queryDesc->totaltime ? queryDesc->totaltime->total * 1000.0 : 0;
 
 	if (!pg_plan_advsr_is_quieted)
 	{
-		elog(INFO, "---- pgsp_queryid ----------------\n\t\t%u", pgsp_queryid);
-		elog(INFO, "---- pgsp_planid -----------------\n\t\t%u", pgsp_planid);
+		elog(INFO, "---- pgsp_queryid ----------------\n\t\t%lld", pgsp_queryid);
+		elog(INFO, "---- pgsp_planid -----------------\n\t\t%lld", pgsp_planid);
 		elog(INFO, "---- Execution Time --------------\n\t\t%0.3f ms", totaltime);
 		elog(DEBUG3, "---- Query text -------------------\n%s\n", queryDesc->sourceText);
 		/* normalized_query is made by post_parse_analyze_hook function */
@@ -1670,6 +1694,8 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 
 	/* initialize */
 	normalized_query = NULL;
+	pgsp_queryid = NULL;
+	pgsp_planid = NULL;
 	pfree(leadcxt);
 }
 

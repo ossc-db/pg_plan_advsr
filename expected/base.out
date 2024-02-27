@@ -106,17 +106,17 @@ on t1.c1 = t2.c1 and t1.c2 = t2.c2;
 (15 rows)
 
 -- Check the result of auto-tuning
-select pgsp_queryid, rows_hint, diff_of_joins, lead_hint, join_hint, scan_hint, join_cnt from plan_repo.plan_history order by id desc limit 4;
- pgsp_queryid |     rows_hint      | diff_of_joins |       lead_hint       |    join_hint     |              scan_hint              | join_cnt 
---------------+--------------------+---------------+-----------------------+------------------+-------------------------------------+----------
-    461058980 |                    |             0 | LEADING( ((c a )b ) ) | HASHJOIN(a b c) +| SEQSCAN(c) SEQSCAN(a) SEQSCAN(b)    |        2
-              |                    |               |                       | HASHJOIN(a c)    |                                     | 
-    461058980 | ROWS(b c #9991)    |          9990 | LEADING( ((c b )a ) ) | NESTLOOP(a b c) +| SEQSCAN(c) SEQSCAN(b) INDEXSCAN(a)  |        2
-              |                    |               |                       | HASHJOIN(b c)    |                                     | 
-    461058980 | ROWS(a c #9991)    |          9990 | LEADING( ((c a )b ) ) | NESTLOOP(a b c) +| SEQSCAN(c) SEQSCAN(a) INDEXSCAN(b)  |        2
-              |                    |               |                       | HASHJOIN(a c)    |                                     | 
-    461058980 | ROWS(a b c #9991) +|         19989 | LEADING( ((a b )c ) ) | NESTLOOP(a b c) +| SEQSCAN(a) SEQSCAN(b) INDEXSCAN(c)  |        2
-              | ROWS(a b #10000)   |               |                       | HASHJOIN(a b)    |                                     | 
+select rows_hint, diff_of_joins, lead_hint, join_hint, scan_hint, join_cnt from plan_repo.plan_history order by id desc limit 4;
+     rows_hint      | diff_of_joins |       lead_hint       |    join_hint     |              scan_hint              | join_cnt 
+--------------------+---------------+-----------------------+------------------+-------------------------------------+----------
+                    |             0 | LEADING( ((c a )b ) ) | HASHJOIN(a b c) +| SEQSCAN(c) SEQSCAN(a) SEQSCAN(b)    |        2
+                    |               |                       | HASHJOIN(a c)    |                                     | 
+ ROWS(b c #9991)    |          9990 | LEADING( ((c b )a ) ) | NESTLOOP(a b c) +| SEQSCAN(c) SEQSCAN(b) INDEXSCAN(a)  |        2
+                    |               |                       | HASHJOIN(b c)    |                                     | 
+ ROWS(a c #9991)    |          9990 | LEADING( ((c a )b ) ) | NESTLOOP(a b c) +| SEQSCAN(c) SEQSCAN(a) INDEXSCAN(b)  |        2
+                    |               |                       | HASHJOIN(a c)    |                                     | 
+ ROWS(a b c #9991) +|         19989 | LEADING( ((a b )c ) ) | NESTLOOP(a b c) +| SEQSCAN(a) SEQSCAN(b) INDEXSCAN(c)  |        2
+ ROWS(a b #10000)   |               |                       | HASHJOIN(a b)    |                                     | 
 (4 rows)
 
 select norm_query_string, hints from hint_plan.hints;
