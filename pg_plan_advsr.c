@@ -207,18 +207,6 @@ bool		ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used);
 bool		pg_plan_advsr_planstate_tree_walker(PlanState *planstate,
 												bool (*walker) (),
 												void *context);
-bool		pg_plan_advsr_planstate_walk_subplans(List *plans,
-												  bool (*walker) (),
-												  void *context);
-
-bool		pg_plan_advsr_planstate_walk_members(List *plans,
-												 PlanState **planstates,
-												 bool (*walker) (),
-												 void *context);
-
-void		pg_plan_advsr_ExplainSubPlans(List *plans, List *ancestors,
-										  const char *relationship, ExplainState *es);
-
 void		pg_plan_advsr_ExplainScanTarget(Scan *plan, ExplainState *es);
 void		pg_plan_advsr_ExplainTargetRel(Plan *plan, Index rti, ExplainState *es);
 
@@ -228,8 +216,11 @@ char	   *get_target_relname(Index rti, ExplainState *es);
 /* inspired from pg_store_plans.c */
 uint32		create_pgsp_planid(QueryDesc *queryDesc);
 
+#if PG_VERSION_NUM < 140000
 /* came from pg_store_plans.c */
 static uint32 hash_query(const char *query);
+#endif  /* PG_VERSION_NUM */
+
 
 /* replace all before strings to after strings in buf strings */
 void		replaceAll(char *buf, const char *before, const char *after);
@@ -1162,10 +1153,11 @@ create_pgsp_planid(QueryDesc *queryDesc)
 	elog(DEBUG3, "normalized_plan: %s", normalized_plan);
 	pfree(normalized_plan);
 
-	elog(DEBUG3, "planid: %u", planid);
+	elog(DEBUG3, "planid: %ld", planid);
 	return planid;
 }
 
+#if PG_VERSION_NUM < 140000
 /* This function cames from pg_store_plans */
 static uint32
 hash_query(const char *query)
@@ -1180,7 +1172,7 @@ hash_query(const char *query)
 
 	return queryid;
 }
-
+#endif  /* PG_VERSION_NUM */
 
 /*
  * Detect if the current utility command is EXPLAIN with ANALYZE option.
@@ -1323,10 +1315,10 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 #endif  /* PG_VERSION_NUM */
 
 /*
- * pg_plan_advsr_planstate_tree_walker, pg_plan_advsr_planstate_walk_subplans and
- * pg_plan_advsr_planstate_walk_members came from src/backend/nodes/nodeFuncs.c
+ * pg_plan_advsr_planstate_tree_walker came from src/backend/nodes/nodeFuncs.
+ *
+ * This function is only for current node, lefttree and righttree
  */
-/* This function is only for current node, lefttree and righttree */
 /*
  * planstate_tree_walker --- walk plan state trees
  *
@@ -1350,114 +1342,6 @@ pg_plan_advsr_planstate_tree_walker(PlanState *planstate,
 	if (innerPlanState(planstate))
 	{
 		if (walker(innerPlanState(planstate), context))
-			return true;
-	}
-
-	/*
-	 * Todo: investigate these node whether it is needed for creating hints or
-	 * not.
-	 */
-	/* special child plans */
-	/*----
-	Plan	   *plan = planstate->plan;
-
-	switch (nodeTag(plan))
-	{
-		case T_ModifyTable:
-			if (planstate_walk_members(((ModifyTable *) plan)->plans,
-									   ((ModifyTableState *) planstate)->mt_plans,
-									   walker, context))
-				return true;
-			break;
-		case T_Append:
-			if (planstate_walk_members(((Append *) plan)->appendplans,
-									   ((AppendState *) planstate)->appendplans,
-									   walker, context))
-				return true;
-			break;
-		case T_MergeAppend:
-			if (planstate_walk_members(((MergeAppend *) plan)->mergeplans,
-									   ((MergeAppendState *) planstate)->mergeplans,
-									   walker, context))
-				return true;
-			break;
-		case T_BitmapAnd:
-			if (planstate_walk_members(((BitmapAnd *) plan)->bitmapplans,
-									   ((BitmapAndState *) planstate)->bitmapplans,
-									   walker, context))
-				return true;
-			break;
-		case T_BitmapOr:
-			if (planstate_walk_members(((BitmapOr *) plan)->bitmapplans,
-									   ((BitmapOrState *) planstate)->bitmapplans,
-									   walker, context))
-				return true;
-			break;
-		case T_SubqueryScan:
-			if (walker(((SubqueryScanState *) planstate)->subplan, context))
-				return true;
-			break;
-		case T_CustomScan:
-			foreach(lc, ((CustomScanState *) planstate)->custom_ps)
-			{
-				if (walker((PlanState *) lfirst(lc), context))
-					return true;
-			}
-			break;
-		default:
-			break;
-	}
-	 *----
-	 */
-
-	/* subPlan-s */
-	/*----
-	 if (planstate_walk_subplans(planstate->subPlan, walker, context))
-		return true;
-	 *----
-	 */
-
-	return false;
-}
-
-/*
- * Walk a list of SubPlans (or initPlans, which also use SubPlan nodes).
- */
-bool
-pg_plan_advsr_planstate_walk_subplans(List *plans,
-									  bool (*walker) (),
-									  void *context)
-{
-	ListCell   *lc;
-
-	foreach(lc, plans)
-	{
-		SubPlanState *sps = lfirst_node(SubPlanState, lc);
-
-		if (walker(sps->planstate, context))
-			return true;
-	}
-
-	return false;
-}
-
-/*
- * Walk the constituent plans of a ModifyTable, Append, MergeAppend,
- * BitmapAnd, or BitmapOr node.
- *
- * Note: we don't actually need to examine the Plan list members, but
- * we need the list in order to determine the length of the PlanState array.
- */
-bool
-pg_plan_advsr_planstate_walk_members(List *plans, PlanState **planstates,
-									 bool (*walker) (), void *context)
-{
-	int			nplans = list_length(plans);
-	int			j;
-
-	for (j = 0; j < nplans; j++)
-	{
-		if (walker(planstates[j], context))
 			return true;
 	}
 
@@ -1506,6 +1390,9 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 		case T_IndexOnlyScan:
 		case T_BitmapHeapScan:
 		case T_TidScan:
+#if PG_VERSION_NUM >= 140000
+		case T_TidRangeScan:
+#endif  /* PG_VERSION_NUM */
 		case T_SubqueryScan:
 		case T_FunctionScan:
 		case T_TableFuncScan:
@@ -1518,7 +1405,11 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 			break;
 		case T_ForeignScan:
 			*rels_used = bms_add_members(*rels_used,
+#if PG_VERSION_NUM >= 160000
+										 ((ForeignScan *) plan)->fs_base_relids);
+#else
 										 ((ForeignScan *) plan)->fs_relids);
+#endif  /* PG_VERSION_NUM */
 			break;
 		case T_CustomScan:
 			*rels_used = bms_add_members(*rels_used,
@@ -1667,8 +1558,8 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 
 	if (!pg_plan_advsr_is_quieted)
 	{
-		elog(INFO, "---- pgsp_queryid ----------------\n\t\t%lld", pgsp_queryid);
-		elog(INFO, "---- pgsp_planid -----------------\n\t\t%lld", pgsp_planid);
+		elog(INFO, "---- pgsp_queryid ----------------\n\t\t%ld", pgsp_queryid);
+		elog(INFO, "---- pgsp_planid -----------------\n\t\t%d", pgsp_planid);
 		elog(INFO, "---- Execution Time --------------\n\t\t%0.3f ms", totaltime);
 		elog(DEBUG3, "---- Query text -------------------\n%s\n", queryDesc->sourceText);
 		/* normalized_query is made by post_parse_analyze_hook function */
@@ -1694,15 +1585,13 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 
 	/* initialize */
 	normalized_query = NULL;
-	pgsp_queryid = NULL;
-	pgsp_planid = NULL;
+	pgsp_queryid = 0;
+	pgsp_planid = 0;
 	pfree(leadcxt);
 }
 
 /*
  * Store query, hints and diffs to tables
- *
- *
  */
 void
 store_info_to_tables(double totaltime, const char *sourcetext)
@@ -1854,31 +1743,7 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 	elog(DEBUG1, "### CreateScanJoinRowsHints ###");
 	elog(DEBUG1, "    Parent Relationship: %s", relationship != NULL ? relationship : "");
 
-	/* Remove initPlan-s such as CTE */
-	if (planstate->initPlan)
-	{
-		if (!pg_plan_advsr_is_quieted)
-			elog(INFO, "---- InitPlan -----------------");
-		/* Remove it for leading hint */
-		planstate->initPlan = NULL;
-
-		/*
-		 * pg_plan_advsr_ExplainSubPlans(planstate->initPlan, ancestors,
-		 * "InitPlan", es);
-		 */
-		if (!pg_plan_advsr_is_quieted)
-			elog(INFO, "-------------------------------");
-	}
-
-	/* Also remove subPlan-s */
-	if (planstate->subPlan)
-	{
-		if (!pg_plan_advsr_is_quieted)
-			elog(INFO, "---- SubPlan ------------------");
-		planstate->subPlan = NULL;
-		if (!pg_plan_advsr_is_quieted)
-			elog(INFO, "-------------------------------");
-	}
+	/* Skip initPlan-s such as CTE and subPlan-s */
 
 	/* Create scan hints using ExplainScanTarget */
 	switch (nodeTag(plan))
