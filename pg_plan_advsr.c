@@ -123,8 +123,11 @@ char	   *normalized_query;
 static int	nested_level = 0;
 
 /* GUC variables */
-/* enable / disabe pg_plan_advsr during EXPLAIN ANALYZE */
+/* enable / disabe pg_plan_advsr */
 static bool pg_plan_advsr_is_enabled;
+
+#define pg_plan_advsr_enabled() \
+	pg_plan_advsr_is_enabled && (nested_level == 0)
 
 /* enable / disable quiet mode */
 static bool pg_plan_advsr_is_quieted;
@@ -829,7 +832,7 @@ pg_plan_advsr_post_parse_analyze_hook(ParseState *pstate, Query *query
 #endif  /* PG_VERSION_NUM */
 
 	/* Create normalized query for later use */
-	if (pg_plan_advsr_is_enabled)
+	if (pg_plan_advsr_enabled())
 	{
 		int	  		query_len;
 #if PG_VERSION_NUM < 140000
@@ -927,7 +930,7 @@ pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 												pg_plan_advsr_query_walker,
 												NULL,
 												0);
-	if(isExplain)
+	if (isExplain)
 	{
 		elog(DEBUG1, "queryString: %s", queryString);
 		explain_query = makeStringInfo();
@@ -984,7 +987,7 @@ pg_plan_advsr_ExecutorStart_hook(QueryDesc *queryDesc, int eflags)
 	 * Set up to track total elapsed time in ExecutorRun. Allocate in
 	 * per-query context so as to be free at ExecutorEnd.
 	 */
-	if (queryDesc->totaltime == NULL && (nested_level == 0))
+	if (pg_plan_advsr_enabled() && queryDesc->totaltime == NULL)
 	{
 		MemoryContext oldcxt;
 
@@ -1058,7 +1061,7 @@ pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
 		InstrEndLoop(queryDesc->totaltime);
 
 	elog(DEBUG1, "isExplain: %d", isExplain);
-	if (isExplain && pg_plan_advsr_is_enabled
+	if (isExplain && pg_plan_advsr_enabled()
 				  && strcmp(queryDesc->sourceText, explain_query->data) == 0)
 	{
 		elog(DEBUG1, "## pg_plan_advsr_ExecutorEnd start ##");
