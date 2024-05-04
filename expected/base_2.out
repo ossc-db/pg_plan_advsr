@@ -106,8 +106,8 @@ on t1.c1 = t2.c1 and t1.c2 = t2.c2;
 (15 rows)
 
 -- Check the result of auto-tuning
-select rows_hint, diff_of_joins, lead_hint, join_hint, scan_hint, join_cnt from plan_repo.plan_history order by id desc limit 4;
-     rows_hint      | diff_of_joins |       lead_hint       |    join_hint     |              scan_hint              | join_cnt 
+select rows_hint, join_rows_err, lead_hint, join_hint, scan_hint, join_cnt from plan_repo.plan_history order by id desc limit 4;
+     rows_hint      | join_rows_err |       lead_hint       |    join_hint     |              scan_hint              | join_cnt 
 --------------------+---------------+-----------------------+------------------+-------------------------------------+----------
                     |             0 | LEADING( ((c a )b ) ) | HASHJOIN(a b c) +| SEQSCAN(c) SEQSCAN(a) SEQSCAN(b)    |        2
                     |               |                       | HASHJOIN(a c)    |                                     | 

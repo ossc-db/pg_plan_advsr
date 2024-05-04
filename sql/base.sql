@@ -45,7 +45,7 @@ on t1.c1 = t2.c1 and t1.c2 = t2.c2;
 \! sql/maskout.sh results/auto-tuning.tmpout
 
 -- Check the result of auto-tuning
-select rows_hint, diff_of_joins, lead_hint, join_hint, scan_hint, join_cnt from plan_repo.plan_history order by id desc limit 4;
+select rows_hint, join_rows_err, lead_hint, join_hint, scan_hint, join_cnt from plan_repo.plan_history order by id desc limit 4;
 select norm_query_string, hints from hint_plan.hints;
 
 -- Clean-up

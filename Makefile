@@ -1,5 +1,5 @@
 EXTENSION = pg_plan_advsr
-DATA = pg_plan_advsr--0.0.sql 
+DATA = pg_plan_advsr--0.1.sql
 
 OBJS = pg_plan_advsr.o pgsp_json.o pgsp_json_text.o
 
