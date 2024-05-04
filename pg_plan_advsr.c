@@ -116,11 +116,17 @@ static int	scan_cnt;
 static int	join_cnt;
 static int	rows_cnt;
 
+/* application name */
+static char	*aplname;
+
 /* This is made by generate_normalized_query in post_parse_analyze_hook */
 char	   *normalized_query;
 
 /* Current nesting depth of ExecutorRun+ProcessUtility calls */
 static int	nested_level = 0;
+
+#define run_pg_plan_advsr() \
+        (isExplain == true && nested_level == 0 && pg_plan_advsr_is_enabled)
 
 /* GUC variables */
 /* enable / disabe pg_plan_advsr */
@@ -138,6 +144,7 @@ static bool pg_plan_advsr_widely;
 /* Saved hook values in case of unload */
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility_hook = NULL;
+static ExplainOneQuery_hook_type prev_ExplainOneQuery_hook = NULL;
 static ExecutorStart_hook_type prev_ExecutorStart_hook = NULL;
 static ExecutorRun_hook_type prev_ExecutorRun_hook = NULL;
 static ExecutorFinish_hook_type prev_ExecutorFinish_hook = NULL;
@@ -174,6 +181,13 @@ static void pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 											  QueryCompletion *qc);
 #endif  /* PG_VERSION_NUM */
 
+static void pg_plan_advsr_ExplainOneQuery_hook(Query *query,
+											   int cursorOptions,
+											   IntoClause *into,
+											   ExplainState *es,
+											   const char *queryString,
+											   ParamListInfo params,
+											   QueryEnvironment *queryEnv);
 static void pg_plan_advsr_ExecutorStart_hook(QueryDesc *queryDesc, int eflags);
 static void pg_plan_advsr_ExecutorRun_hook(QueryDesc *queryDesc, ScanDirection direction,
 										   uint64 count, bool execute_once);
@@ -188,8 +202,6 @@ static bool pg_plan_advsr_query_walker(Node *parsetree);
 /* This function came from pg_hint_plan.c */
 static const char *get_query_string(ParseState *pstate, Query *query, Query **jumblequery);
 #endif  /* PG_VERSION_NUM */
-
-ExplainState *pg_plan_advsr_NewExplainState(void);
 
 /* entry point of pg_plan_advsr */
 void		pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc);
@@ -233,7 +245,7 @@ double		get_diff_rows(double est_rows, double act_rows);
 double		get_diff_ratio(double est_rows, double act_rows);
 
 /* plan_repo.plan_history */
-#define Natts_plan_history					16
+#define Natts_plan_history					17
 #define Anum_plan_history_id				1	/* serial */
 #define Anum_plan_history_norm_query_hash	2	/* text */
 #define Anum_plan_history_pgsp_queryid		3	/* bigint */
@@ -247,9 +259,10 @@ double		get_diff_ratio(double est_rows, double act_rows);
 #define Anum_plan_history_max_diff_ratio_scan	11	/* double precision */
 #define Anum_plan_history_diff_of_joins		12	/* double precision */
 #define Anum_plan_history_max_diff_ratio_join	13	/* double precision */
-#define Anum_plan_history_join_cnt			14	/* int */
-#define Anum_plan_history_application_name	15	/* text */
-#define Anum_plan_history_timestamp			16	/* timestamp */
+#define Anum_plan_history_scan_cnt			14	/* int */
+#define Anum_plan_history_join_cnt			15	/* int */
+#define Anum_plan_history_application_name	16	/* text */
+#define Anum_plan_history_timestamp			17	/* timestamp */
 
 /* plan_repo.norm_queries */
 #define Natts_norm_queries					2
@@ -278,7 +291,7 @@ static bool insertPlanHistory(const char *norm_query_hash, const uint64 pgsp_que
 							  const char *join_hint, const char *lead_hint,
 							  const double diff_of_scans, const double max_diff_ratio_scan,
 							  const double diff_of_joins, const double max_diff_ratio_join,
-							  const int join_cnt, char *application_name);
+							  const int scan_cnt, const int join_cnt, char *application_name);
 static bool insertNormQueries(const char *norm_query_hash, const char *norm_query_string);
 static bool insertRawQueries(const char *raw_query_hash, const char *raw_query_string);
 static void selectHints(const char *norm_query_string, const char *application_name, StringInfo prev_rows_hint);
@@ -375,7 +388,7 @@ insertPlanHistory(const char *norm_query_hash, const uint64 pgsp_queryid, const 
 				  const char *join_hint, const char *lead_hint,
 				  const double diff_of_scans, const double max_diff_ratio_scan,
 				  const double diff_of_joins, const double max_diff_ratio_join,
-				  const int join_cnt, char *application_name)
+				  const int scan_cnt, const int join_cnt, char *application_name)
 {
 	Relation	rel = NULL;
 	TupleDesc	tupleDescriptor = NULL;
@@ -427,6 +440,9 @@ insertPlanHistory(const char *norm_query_hash, const uint64 pgsp_queryid, const 
 	isNulls[Anum_plan_history_diff_of_joins - 1] = false;
 	values[Anum_plan_history_max_diff_ratio_join - 1] = Float8GetDatum(max_diff_ratio_join);
 	isNulls[Anum_plan_history_max_diff_ratio_join - 1] = false;
+
+	values[Anum_plan_history_scan_cnt - 1] = Int32GetDatum(scan_cnt);
+	isNulls[Anum_plan_history_scan_cnt - 1] = false;
 	values[Anum_plan_history_join_cnt - 1] = Int32GetDatum(join_cnt);
 	isNulls[Anum_plan_history_join_cnt - 1] = false;
 
@@ -704,6 +720,9 @@ _PG_init(void)
 	prev_ProcessUtility_hook = ProcessUtility_hook;
 	ProcessUtility_hook = pg_plan_advsr_ProcessUtility_hook;
 
+	prev_ExplainOneQuery_hook = ExplainOneQuery_hook;
+	ExplainOneQuery_hook = pg_plan_advsr_ExplainOneQuery_hook;
+
 	prev_ExecutorStart_hook = ExecutorStart_hook;
 	ExecutorStart_hook = pg_plan_advsr_ExecutorStart_hook;
 
@@ -971,6 +990,131 @@ pg_plan_advsr_ProcessUtility_hook(PlannedStmt *pstmt,
 #endif  /* PG_VERSION_NUM */
 }
 
+
+static void pg_plan_advsr_ExplainOneQuery_hook(Query *query,
+											   int cursorOptions,
+											   IntoClause *into,
+											   ExplainState *es,
+											   const char *queryString,
+											   ParamListInfo params,
+											   QueryEnvironment *queryEnv)
+{
+	PlannedStmt *plan;
+	instr_time	planstart,
+				planduration;
+#if PG_VERSION_NUM > 130000
+	BufferUsage bufusage_start,
+				bufusage;
+#endif  /* PG_VERSION_NUM */
+
+	if (prev_ExplainOneQuery_hook)
+		prev_ExplainOneQuery_hook(query,
+								  cursorOptions,
+								  into,
+								  es,
+								  queryString,
+								  params,
+								  queryEnv);
+
+	if (run_pg_plan_advsr())
+	{
+		elog(DEBUG1, "##pg_plan_advsr_ExplainOneQuery_hook start ##");
+
+#if PG_VERSION_NUM > 130000
+		if (es->buffers)
+			bufusage_start = pgBufferUsage;
+#endif  /* PG_VERSION_NUM */
+
+		INSTR_TIME_SET_CURRENT(planstart);
+
+		/* plan the query */
+		plan = pg_plan_query(query,
+#if PG_VERSION_NUM < 130000
+							 cursorOptions, params);
+#else
+							 queryString, cursorOptions, params);
+#endif  /* PG_VERSION_NUM */
+
+		INSTR_TIME_SET_CURRENT(planduration);
+		INSTR_TIME_SUBTRACT(planduration, planstart);
+
+#if PG_VERSION_NUM > 130000
+		/* calc differences of buffer counters. */
+		if (es->buffers)
+		{
+			memset(&bufusage, 0, sizeof(BufferUsage));
+			BufferUsageAccumDiff(&bufusage, &pgBufferUsage, &bufusage_start);
+		}
+#endif  /* PG_VERSION_NUM */
+
+
+		/* run it (if needed) and produce output */
+		ExplainOnePlan(plan, into, es, queryString, params, queryEnv,
+#if PG_VERSION_NUM < 130000
+					   &planduration);
+#else
+					   &planduration, (es->buffers ? &bufusage : NULL));
+#endif  /* PG_VERSION_NUM */
+
+		if (es->format == EXPLAIN_FORMAT_TEXT && !pg_plan_advsr_is_quieted)
+		{
+			appendStringInfo(es->str, "\nDESCRIBE\n");
+			appendStringInfo(es->str, "------------------------\n");
+			appendStringInfo(es->str, "application:    %s\n", aplname);
+			appendStringInfo(es->str, "pgsp_queryid:   %ld\n", pgsp_queryid);
+			appendStringInfo(es->str, "pgsp_planid:    %u\n", pgsp_planid);
+			appendStringInfo(es->str, "join_cnt:       %d\n", join_cnt);
+			appendStringInfo(es->str, "join_rows_err:  %.0f\n", total_diff_rows_join);
+			appendStringInfo(es->str, "join_err_ratio: %.2f\n", max_diff_ratio_join);
+			appendStringInfo(es->str, "scan_cnt:       %d\n", scan_cnt);
+			appendStringInfo(es->str, "scan_rows_err:  %.0f\n", total_diff_rows_scan);
+			appendStringInfo(es->str, "scan_err_ratio: %.2f\n", max_diff_ratio_scan);
+
+			appendStringInfo(es->str, "lead hint:      %s\n", leadcxt->lead_str->data);
+			replaceAll(join_str->data, "\n", "");
+			appendStringInfo(es->str, "join hint:      %s\n", join_str->data);
+
+			appendStringInfo(es->str, "scan hint:      %s\n", scan_str->data);
+
+			replaceAll(rows_str->data, "\n", "");
+			appendStringInfo(es->str, "rows hint:      %s\n", rows_str->data);
+		}
+
+		/* post processing */
+		isExplain = false;
+		normalized_query = NULL;
+		pgsp_queryid = 0;
+		pgsp_planid = 0;
+		pfree(leadcxt);
+
+		elog(DEBUG1, "##pg_plan_advsr_ExplainOneQuery_hook end ##");
+	}
+	else
+	{
+		INSTR_TIME_SET_CURRENT(planstart);
+
+		/* plan the query */
+		plan = pg_plan_query(query,
+#if PG_VERSION_NUM < 130000
+							 cursorOptions, params);
+#else
+							 queryString, cursorOptions, params);
+#endif  /* PG_VERSION_NUM */
+
+		INSTR_TIME_SET_CURRENT(planduration);
+		INSTR_TIME_SUBTRACT(planduration, planstart);
+
+		/* run it (if needed) and produce output */
+		ExplainOnePlan(plan, into, es, queryString, params, queryEnv,
+#if PG_VERSION_NUM < 130000
+					   &planduration);
+#else
+					   &planduration, (es->buffers ? &bufusage : NULL));
+#endif  /* PG_VERSION_NUM */
+	}
+}
+
+
 /* ExecutorStart, Run and Finish are came from pg_store_plans.c */
 /*
  * ExecutorStart hook: start up tracking if needed
@@ -1056,6 +1200,7 @@ static void
 pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
 {
 	ExplainState *hs;
+	MemoryContext oldcxt;
 
 	if (queryDesc->totaltime)
 		InstrEndLoop(queryDesc->totaltime);
@@ -1067,7 +1212,7 @@ pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
 		elog(DEBUG1, "## pg_plan_advsr_ExecutorEnd start ##");
 
 		/* Create Hints using HintState like a ExplainState */
-		hs = pg_plan_advsr_NewExplainState();
+		hs = NewExplainState();
 		hs->analyze = true;
 		hs->verbose = true;
 		hs->buffers = false;
@@ -1075,12 +1220,31 @@ pg_plan_advsr_ExecutorEnd_hook(QueryDesc *queryDesc)
 		hs->summary = hs->analyze;
 		hs->format = EXPLAIN_FORMAT_JSON;
 
+		/* Initialize */
+		oldcxt = MemoryContextSwitchTo(TopMemoryContext);
+		leadcxt = (LeadingContext *) palloc0(sizeof(LeadingContext));
+		leadcxt->lead_str = makeStringInfo();
+		MemoryContextSwitchTo(oldcxt);
+
+		scan_str = makeStringInfo();
+		join_str = makeStringInfo();
+		rows_str = makeStringInfo();
+		est_rows = 0;
+		act_rows = 0;
+		diff_rows_join  = 0;
+		diff_ratio_join = 0;
+		diff_rows_scan  = 0;
+		diff_ratio_scan = 0;
+		scan_cnt = 0;
+		join_cnt = 0;
+		rows_cnt = 0;
+
 		pg_plan_advsr_ExplainPrintPlan(hs, queryDesc);
 
 		elog(DEBUG1, "## pg_plan_advsr_ExecutorEnd end ##");
 
 		/* initialize */
-		isExplain = false;
+		/* isExplain = false; */
 	}
 
 	if (prev_ExecutorEnd_hook)
@@ -1116,10 +1280,6 @@ create_pgsp_planid(QueryDesc *queryDesc)
 	if (strcmp(GetConfigOptionByName("pg_store_plans.log_triggers", NULL, false), "on") == 0)
 		log_triggers = true;
 
-	/*
-	 * elog(INFO, "pg_store_plans.log_analyze: %s",
-	 * GetConfigOptionByName("pg_store_plans.log_analyze", NULL, false));
-	 */
 	elog(DEBUG1, "pg_store_plans.log_verbose : %s", log_verbose ? "on" : "off");
 	elog(DEBUG1, "pg_store_plans.log_buffers : %s", log_buffers ? "on" : "off");
 	elog(DEBUG1, "pg_store_plans.log_timing  : %s", log_timing ? "on" : "off");
@@ -1434,7 +1594,7 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 
 /* For creating Leading hint */
 bool
-CreateLeadingHint(PlanState *planstate, LeadingContext * lead)
+CreateLeadingHint(PlanState *planstate, LeadingContext *lead)
 {
 	Plan	   *plan = planstate->plan;
 
@@ -1539,8 +1699,6 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 	CreateScanJoinRowsHints(ps, NIL, NULL, NULL, es);
 
 	/* Create leading_str */
-	leadcxt = (LeadingContext *) palloc0(sizeof(LeadingContext));
-	leadcxt->lead_str = makeStringInfo();
 	leadcxt->es = es;
 
 	appendStringInfo(leadcxt->lead_str, "LEADING( ");
@@ -1559,22 +1717,7 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 	pgsp_planid = create_pgsp_planid(queryDesc);
 	totaltime = queryDesc->totaltime ? queryDesc->totaltime->total * 1000.0 : 0;
 
-	if (!pg_plan_advsr_is_quieted)
-	{
-		elog(INFO, "---- pgsp_queryid ----------------\n\t\t%ld", pgsp_queryid);
-		elog(INFO, "---- pgsp_planid -----------------\n\t\t%d", pgsp_planid);
-		elog(INFO, "---- Execution Time --------------\n\t\t%0.3f ms", totaltime);
-		elog(DEBUG3, "---- Query text -------------------\n%s\n", queryDesc->sourceText);
-		/* normalized_query is made by post_parse_analyze_hook function */
-		elog(DEBUG3, "---- Normalized query text --------\n%s\n", normalized_query);
-		elog(INFO, "---- Hints for current plan ------\n%s\n%s\n%s", scan_str->data, join_str->data, leadcxt->lead_str->data);
-		elog(INFO, "---- Rows hint (feedback info)----\n%s", rows_str->data);
-		elog(INFO, "---- Join count ------------------\n\t\t%d", join_cnt);
-		elog(INFO, "---- Total diff rows of joins ----\n\t\t%.0f", total_diff_rows_join);
-		elog(INFO, "---- Maximum diff ratio of joins -\n\t\t%.3f", max_diff_ratio_join);
-		elog(INFO, "---- Total diff rows of scans ----\n\t\t%.0f", total_diff_rows_scan);
-		elog(INFO, "---- Maximum diff ratio of scans -\n\t\t%.3f", max_diff_ratio_scan);
-	}
+	aplname = GetConfigOptionByName("application_name", NULL, false);
 
 	/* store above data to tables */
 	/*----
@@ -1586,11 +1729,6 @@ pg_plan_advsr_ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 	 */
 	store_info_to_tables(totaltime, queryDesc->sourceText);
 
-	/* initialize */
-	normalized_query = NULL;
-	pgsp_queryid = 0;
-	pgsp_planid = 0;
-	pfree(leadcxt);
 }
 
 /*
@@ -1605,7 +1743,6 @@ store_info_to_tables(double totaltime, const char *sourcetext)
 	const char *errstr = NULL;
 #endif  /* PG_VERSION_NUM */
 
-	char	   *aplname;
 	StringInfo	prev_rows_hint;
 	StringInfo	new_hint;
 
@@ -1628,17 +1765,12 @@ store_info_to_tables(double totaltime, const char *sourcetext)
 				 errmsg("pg_md5_hash: out of memory")));
 	}
 
-	/* get application_name */
-	aplname = GetConfigOptionByName("application_name", NULL, false);
-	if (!pg_plan_advsr_is_quieted)
-		elog(INFO, "---- Application name-------------\n\t\t%s", aplname);
-
 	/* insert totaltime and hints to plan_repo.plan_history */
 	if (insertPlanHistory(md5, pgsp_queryid, pgsp_planid, totaltime,
 				rows_str->data, scan_str->data, join_str->data,
 				leadcxt->lead_str->data,
 				total_diff_rows_scan, max_diff_ratio_scan,
-				total_diff_rows_join, max_diff_ratio_join, join_cnt, aplname))
+				total_diff_rows_join, max_diff_ratio_join, scan_cnt, join_cnt, aplname))
 		elog(DEBUG3, "\ninsert success: plan_history\n");
 	else
 		elog(INFO, "\ninsert error: plan_history\n");
@@ -1942,38 +2074,6 @@ CreateScanJoinRowsHints(PlanState *planstate, List *ancestors,
 	{
 		ancestors = list_delete_first(ancestors);
 	}
-}
-
-
-/*
- * Create a new ExplainState struct initialized with default options.
- */
-ExplainState *
-pg_plan_advsr_NewExplainState(void)
-{
-	ExplainState *es = (ExplainState *) palloc0(sizeof(ExplainState));
-
-	elog(DEBUG1, "### pg_plan_advsr_NewExplainState ###");
-
-	/* Set default options (most fields can be left as zeroes). */
-	es->costs = true;
-	/* Prepare output buffer. */
-	es->str = makeStringInfo();
-
-	scan_str = makeStringInfo();
-	join_str = makeStringInfo();
-	rows_str = makeStringInfo();
-	est_rows = 0;
-	act_rows = 0;
-	diff_rows_join  = 0;
-	diff_ratio_join = 0;
-	diff_rows_scan  = 0;
-	diff_ratio_scan = 0;
-	scan_cnt = 0;
-	join_cnt = 0;
-	rows_cnt = 0;
-
-	return es;
 }
 
 /*
