@@ -18,5 +18,10 @@ Code
   pg_plan_advsr needs some files from pg_hint_plan and pg_store_plans.
   It would be better to copy them to its directory automaticaly.
   
-- Implement CREATE STATISTICS suggestion as a new feature
+- ~~Implement CREATE STATISTICS suggestion as a new feature~~
+
+- Support Grouping columns and Expressions on Extended statistics suggestion
+
+- Add more info in DESCRIBE section
+
 
