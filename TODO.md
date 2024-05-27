@@ -20,8 +20,7 @@ Code
   
 - ~~Implement CREATE STATISTICS suggestion as a new feature~~
 
-- Support Grouping columns and Expressions on Extended statistics suggestion
-
-- Add more info in DESCRIBE section
-
-
+- Improve Extended Statistics Suggestion feature
+	- Increase the number of supported column types: grouping columns and  expression columns
+	- Check existing Extended stats to prevent duplicate Extended stats suggestions
+	- Suggest only Extended stats that are effective
