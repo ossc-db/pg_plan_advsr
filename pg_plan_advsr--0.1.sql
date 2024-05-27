@@ -93,6 +93,20 @@ IMMUTABLE
 RETURNS NULL ON NULL INPUT;
 
 -- This function can use on PG14 or above with pg_qualstats
+CREATE OR REPLACE FUNCTION plan_repo.get_col_from_qualstats(bigint)
+RETURNS TEXT
+AS $$
+	SELECT pg_catalog.quote_ident(a.attname)
+	FROM pg_qualstats() q
+	JOIN pg_catalog.pg_class c ON coalesce(q.lrelid, q.rrelid) = c.oid
+	JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+	 AND a.attnum = coalesce(q.lattnum, q.rattnum)
+	JOIN pg_catalog.pg_operator op ON op.oid = q.opno
+	WHERE q.qualnodeid = $1
+	  AND q.qualid is not null;
+$$ LANGUAGE sql;
+
+
 CREATE OR REPLACE FUNCTION plan_repo.get_extstat(bigint)
 RETURNS TABLE (suggest text) AS $$
 	with all_quals as (
@@ -101,7 +115,7 @@ RETURNS TABLE (suggest text) AS $$
 			   lrelid as rel,
 			   pg_catalog.quote_ident(n.nspname) || '.' ||
 			   pg_catalog.quote_ident(c.relname) as relname,
-			   pg_qualstats_get_idx_col(qualnodeid, true) as col
+			   plan_repo.get_col_from_qualstats(qualnodeid) as col
 	    FROM pg_qualstats() q
 	    JOIN pg_catalog.pg_class c ON q.lrelid = c.oid
 	    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -112,7 +126,7 @@ RETURNS TABLE (suggest text) AS $$
 			   rrelid as rel,
 			   pg_catalog.quote_ident(n.nspname) || '.' ||
 			   pg_catalog.quote_ident(c.relname) as relname,
-			   pg_qualstats_get_idx_col(qualnodeid, true) as col
+			   plan_repo.get_col_from_qualstats(qualnodeid) as col
 	    FROM pg_qualstats() q
 	    JOIN pg_catalog.pg_class c ON q.rrelid = c.oid
 	    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
